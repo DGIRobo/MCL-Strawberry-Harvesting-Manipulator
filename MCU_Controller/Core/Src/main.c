@@ -838,6 +838,15 @@ void robot_state_update(Manipulator *r)
 		r->tau_bi_excess.pData[i] = r->axis_configuration[i] * r->motors[i].control_input_excess;
 	}
 
+	// 2. Range of Motion Checking
+	r->q.pData[0] = r->q_bi.pData[0];
+	r->q.pData[1] = r->q_bi.pData[1];
+	r->q.pData[2] = r->q_bi.pData[2] - r->q_bi.pData[1];
+	for (int i = 0; i < NUM_MOTORS; ++i) {
+		if (r->q.pData[i] > r->q_upper_ROM[i]) { sta=5; Error_Handler(); }
+		else if (r->q.pData[i] < r->q_lower_ROM[i]) { sta=5; Error_Handler(); }
+	}
+
 	// 2. model params update
 	robot_model_param_cal(r);
 
@@ -1632,6 +1641,7 @@ void Error_Handler(void)
 	  case 2: printf("Error Code: %d, This is CAN Rx Error.\r\n", sta); break;
 	  case 3: printf("Error Code: %d, This is MCU Initialization Error.\r\n", sta); break;
 	  case 4: printf("Error Code: %d, This is Matrix Calculation Error.\r\n", sta); break;
+	  case 5: printf("Error Code: %d, This is Range of Motion Error.\r\n", sta); break;
 	  default: printf("Error Code: Unknown");
 	}
   while (1)
