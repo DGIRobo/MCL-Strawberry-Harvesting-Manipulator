@@ -135,6 +135,8 @@ typedef struct {
 	// motor current limit
 	float32_t upper_CL;
 	float32_t lower_CL;
+	// motor saturated term
+	float32_t control_input_excess;
 } Motor;
 
 // robot control reference
@@ -160,10 +162,11 @@ float32_t target_posXYZ_buffer[NUM_TASK_DEG] = {
 arm_matrix_instance_f32 target_posXYZ;
 
 // robot control gains
-float32_t taskspace_p_gain[NUM_TASK_DEG]     = {180, 180, 180};
-float32_t taskspace_i_gain[NUM_TASK_DEG]     = {30, 30, 30};
-float32_t taskspace_d_gain[NUM_TASK_DEG]     = {3, 3, 3};
-float32_t taskspace_pid_cutoff[NUM_TASK_DEG] = {150, 150, 150};
+float32_t taskspace_p_gain[NUM_TASK_DEG]      = {180, 180, 180};
+float32_t taskspace_i_gain[NUM_TASK_DEG]      = {30, 30, 30};
+float32_t taskspace_d_gain[NUM_TASK_DEG]      = {3, 3, 3};
+float32_t taskspace_windup_gain[NUM_TASK_DEG] = {0, 0, 0};
+float32_t taskspace_pid_cutoff[NUM_TASK_DEG]  = {150, 150, 150};
 
 // Manipulator Structure Definition
 typedef struct {
@@ -235,6 +238,7 @@ typedef struct {
 	float32_t pos_kp[NUM_TASK_DEG];
 	float32_t pos_ki[NUM_TASK_DEG];
 	float32_t pos_kd[NUM_TASK_DEG];
+	float32_t pos_k_windup[NUM_TASK_DEG];
 	float32_t cutoff_pos_pid[NUM_TASK_DEG];
 
 	// manipulator task space pid control state definition
@@ -279,6 +283,12 @@ typedef struct {
 	float32_t tau_bi_buffer[NUM_MOTORS];
 	arm_matrix_instance_f32 tau_bi_old;
 	float32_t tau_bi_old_buffer[NUM_MOTORS];
+	arm_matrix_instance_f32 tau_bi_excess;
+	float32_t tau_bi_excess_buffer[NUM_MOTORS];
+	arm_matrix_instance_f32 pos_pid_output_excess;
+	float32_t pos_pid_output_excess_buffer[NUM_TASK_DEG];
+	arm_matrix_instance_f32 pos_pid_output_excess_old;
+	float32_t pos_pid_output_excess_old_buffer[NUM_TASK_DEG];
 } Manipulator;
 
 Manipulator strawberry_robot;
@@ -603,8 +613,16 @@ void motor_pos_pid(Motor *m, float32_t pos_ref)
 
 	m->control_input = (m->pos_P_term + m->pos_I_term + m->pos_D_term) /m->gear_ratio /m->Kt; // motor torque -> load torque -> current converting
 
-	if (m->control_input > m->upper_CL) m->control_input = m->upper_CL; // upper bound saturation (rated current limit)
-	if (m->control_input < m->lower_CL) m->control_input = m->lower_CL; // lower bound saturation (rated current limit)
+	// 매 주기 anti-windup term 리셋 (추후 saturation이 발생하게 되면 값이 덧씌워짐)
+	m->control_input_excess = 0.0f;
+	if (m->control_input > m->upper_CL) {
+		m->control_input_excess = (m->control_input - m->upper_CL) * m->Kt * m->gear_ratio;
+		m->control_input = m->upper_CL; // upper bound saturation (rated current limit)
+	}
+	if (m->control_input < m->lower_CL) {
+		m->control_input_excess = (m->control_input - m->lower_CL) * m->Kt * m->gear_ratio;
+		m->control_input = m->lower_CL; // lower bound saturation (rated current limit)
+	}
 }
 
 void motor_vel_pid(Motor *m, float32_t vel_ref)
@@ -618,31 +636,45 @@ void motor_vel_pid(Motor *m, float32_t vel_ref)
 
 	m->control_input = (m->vel_P_term + m->vel_I_term) /m->gear_ratio /m->Kt; // motor torque -> load torque -> current converting
 
-	if (m->control_input > m->upper_CL) m->control_input = m->upper_CL; // upper bound saturation (rated current limit)
-	if (m->control_input < m->lower_CL) m->control_input = m->lower_CL; // lower bound saturation (rated current limit)
+	// 매 주기 anti-windup term 리셋 (추후 saturation이 발생하게 되면 값이 덧씌워짐)
+	m->control_input_excess = 0.0f;
+	if (m->control_input > m->upper_CL) {
+		m->control_input_excess = (m->control_input - m->upper_CL) * m->Kt * m->gear_ratio;
+		m->control_input = m->upper_CL; // upper bound saturation (rated current limit)
+	}
+	if (m->control_input < m->lower_CL) {
+		m->control_input_excess = (m->control_input - m->lower_CL) * m->Kt * m->gear_ratio;
+		m->control_input = m->lower_CL; // lower bound saturation (rated current limit)
+	}
 }
 
 void motor_feedforward_torque(Motor *m, float32_t tor_ref)
 {
 	m->control_input = tor_ref /m->gear_ratio /m->Kt; // motor torque -> load torque -> current converting
 
-	if (m->control_input > m->upper_CL) m->control_input = m->upper_CL; // upper bound saturation (rated current limit)
-	if (m->control_input < m->lower_CL) m->control_input = m->lower_CL; // lower bound saturation (rated current limit)
+	// 매 주기 anti-windup term 리셋 (추후 saturation이 발생하게 되면 값이 덧씌워짐)
+	m->control_input_excess = 0.0f;
+	if (m->control_input > m->upper_CL) {
+		m->control_input_excess = (m->control_input - m->upper_CL) * m->Kt * m->gear_ratio;
+		m->control_input = m->upper_CL; // upper bound saturation (rated current limit)
+	}
+	if (m->control_input < m->lower_CL) {
+		m->control_input_excess = (m->control_input - m->lower_CL) * m->Kt * m->gear_ratio;
+		m->control_input = m->lower_CL; // lower bound saturation (rated current limit)
+	}
 }
 
 // 3-DoF Manipulator Task Space Controller Functions ----------------------------------------------------
 void robot_forward_kinematics_cal(Manipulator *r)
 {
-	// 1. matrix calculation status 변수 생성
-	arm_status cal_status;
-	// 2. pre-term calculation
+	// 1. pre-term calculation
 	const float32_t s_1 = sinf(r->q_bi.pData[0]);
 	const float32_t c_1 = cosf(r->q_bi.pData[0]);
 	const float32_t s_m = sinf(r->q_bi.pData[1]);
 	const float32_t c_m = cosf(r->q_bi.pData[1]);
 	const float32_t s_b = sinf(r->q_bi.pData[2]);
 	const float32_t c_b = cosf(r->q_bi.pData[2]);
-	// 3. task space state update
+	// 2. task space state update
 	for (int i = 0; i < NUM_TASK_DEG; ++i) {
 		r->posXYZ_ref_old.pData[i] = r->posXYZ_ref.pData[i];
 		r->posXYZ_old.pData[i] = r->posXYZ.pData[i];
@@ -651,26 +683,22 @@ void robot_forward_kinematics_cal(Manipulator *r)
 	r->posXYZ.pData[0] = c_1 * (r->l2 * c_m + r->l3 * c_b);
 	r->posXYZ.pData[1] = s_1 * (r->l2 * c_m + r->l3 * c_b);
 	r->posXYZ.pData[2] = r->l1 + r->l2 * s_m + r->l3 * s_b;
-	cal_status = arm_mat_mult_f32(&r->jacb_bi, &r->qdot_bi, &r->velXYZ);
-	if (cal_status != ARM_MATH_SUCCESS) {
-		sta = 7;
-		Error_Handler();
-	}
+	if (arm_mat_mult_f32(&r->jacb_bi, &r->qdot_bi, &r->velXYZ) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
 }
 
 void robot_model_param_cal(Manipulator *r)
 {
-	// 1. matrix calculation status 변수 생성
-	arm_status cal_status;
-	// 2. pre-term calculation
+	// 1. pre-term calculation
 	const float32_t s_1 = sinf(r->q_bi.pData[0]);
 	const float32_t c_1 = cosf(r->q_bi.pData[0]);
 	const float32_t s_m = sinf(r->q_bi.pData[1]);
 	const float32_t c_m = cosf(r->q_bi.pData[1]);
 	const float32_t s_b = sinf(r->q_bi.pData[2]);
 	const float32_t c_b = cosf(r->q_bi.pData[2]);
+	const float32_t s_bm = sinf(r->q_bi.pData[2] - r->q_bi.pData[1]);
+	const float32_t c_bm = cosf(r->q_bi.pData[2] - r->q_bi.pData[1]);
 
-	// 3. model params update (Jacobian 채우기)
+	// 2. model params update (Jacobian 채우기)
 	r->jacb_bi.pData[0 * r->jacb_bi.numCols + 0] = -s_1 * (r->l2 * c_m + r->l3 * c_b);
 	r->jacb_bi.pData[0 * r->jacb_bi.numCols + 1] = -r->l2 * c_1 * s_m;
 	r->jacb_bi.pData[0 * r->jacb_bi.numCols + 2] = -r->l3 * c_1 * s_b;
@@ -680,69 +708,121 @@ void robot_model_param_cal(Manipulator *r)
 	r->jacb_bi.pData[2 * r->jacb_bi.numCols + 0] = 0.0f;
 	r->jacb_bi.pData[2 * r->jacb_bi.numCols + 1] = r->l2 * c_m;
 	r->jacb_bi.pData[2 * r->jacb_bi.numCols + 2] = r->l3 * c_b;
+	if (arm_mat_trans_f32(&r->jacb_bi, &r->jacb_bi_trans) != ARM_MATH_SUCCESS)  { sta=4; Error_Handler(); }
 
-	// 4. model params update (transpose, Jacobian inverse, transpose inverse 채우기)
-	cal_status = arm_mat_trans_f32(&r->jacb_bi, &r->jacb_bi_trans);
-		if (cal_status != ARM_MATH_SUCCESS) {
-			sta = 4;
-			Error_Handler();
+	// 3. model params update (Manipulator Dynamics model 채우기)
+	float32_t l2_cm_d3_cb = r->l2 * c_m + r->d3 * c_b;
+	r->M_bi.pData[0 * r->M_bi.numCols + 0] = r->J1
+											+ r->m2 * (r->d2 * c_m) * (r->d2 * c_m)
+											+ r->m3 *  l2_cm_d3_cb * l2_cm_d3_cb;
+	r->M_bi.pData[0 * r->M_bi.numCols + 1] = - r->m2 * r->d2 * r->d2 * s_m * c_m
+											- r->m3 * l2_cm_d3_cb * r->l2 * s_m;
+	r->M_bi.pData[0 * r->M_bi.numCols + 2] = - r->m3 * l2_cm_d3_cb * r->d3 * s_b;
+	r->M_bi.pData[1 * r->M_bi.numCols + 0] = r->M_bi.pData[0 * r->M_bi.numCols + 1];
+	r->M_bi.pData[1 * r->M_bi.numCols + 1] = r->J2
+											+ r->m3 * r->l2 * r->l2;
+	r->M_bi.pData[1 * r->M_bi.numCols + 2] = r->m3 * r->l2 * r->d3 * c_bm;
+	r->M_bi.pData[2 * r->M_bi.numCols + 0] = r->M_bi.pData[0 * r->M_bi.numCols + 2];
+	r->M_bi.pData[2 * r->M_bi.numCols + 1] = r->M_bi.pData[1 * r->M_bi.numCols + 2];
+	r->M_bi.pData[2 * r->M_bi.numCols + 2] = r->J3;
+	r->C_bi.pData[0]= 2.0f * (- r->m2 * r->d2 * r->d2 * c_m * s_m * r->qdot_bi.pData[1]
+								- r->m3 * (r->l2 * c_m + r->d3 * c_b) * ((r->l2 * s_m + r->d3 * s_b) * r->qdot_bi.pData[1] + r->d3 * s_b * (r->qdot_bi.pData[2] - r->qdot_bi.pData[1]))
+							 ) * r->qdot_bi.pData[0];
+	r->C_bi.pData[1] = - r->m3 * r->l2 * r->d3 * s_bm * (r->qdot_bi.pData[2] + r->qdot_bi.pData[1]) * (r->qdot_bi.pData[2] - r->qdot_bi.pData[1]);
+	r->C_bi.pData[2] = r->m3 * r->l2 * r->d3 * s_bm * (r->qdot_bi.pData[1] * r->qdot_bi.pData[1]);
+	r->G_bi.pData[0] = 0.0f;
+	r->G_bi.pData[1] = g * (r->m2 * r->d2 + r->m3 * r->l2) * c_m;
+	r->G_bi.pData[2] = g * r->m3 * r->d3 * c_b;
+
+	// 5.Singular Point에 가까운지 여부에 따라 Jacobian Inverse와 Taskspace Mass Matrix 분리해서 계산
+	// L = l2*cos(qm) + l3*cos(qb)
+	float32_t L = r->l2 * c_m + r->l3 * c_b;
+	// Δ = cos(qb) * sin(qm) - cos(qm) * sin(qb) = sin(qm - qb)
+	float32_t Delta = c_b * s_m - c_m * s_b;
+	// L, Delta 계산 직후 크기가 너무 작지 않은지 확인 (Singular Point에 가까운지 확인)
+	float32_t epsL = fmaxf(1e-6f*(r->l2 + r->l3), FLT_EPSILON*(r->l2 + r->l3));
+	float32_t epsD = fmaxf(1e-6f,               FLT_EPSILON);
+	if (fabsf(L) < epsL || fabsf(Delta) < epsD) // Singular Point에 가까우면 0으로 나누게 되는 Fault 상황이 발생하기 때문에 해당 경우에는 DLS 사용
+	{
+	    // ----- DLS fallback: J^T (J J^T + λ^2 I)^{-1} -----
+		// Jacobian의 Inverse 계산
+	    float32_t JJt_buf[9], JJt_d_buf[9], invJJt_buf[9];
+	    arm_matrix_instance_f32 JJt, JJt_d, invJJt;
+	    arm_mat_init_f32(&JJt,   3,3, JJt_buf);
+	    arm_mat_init_f32(&JJt_d, 3,3, JJt_d_buf);
+	    arm_mat_init_f32(&invJJt,3,3, invJJt_buf);
+	    if (arm_mat_mult_f32(&r->jacb_bi, &r->jacb_bi_trans, &JJt) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+	    float32_t tr = JJt_buf[0] + JJt_buf[4] + JJt_buf[8];
+	    float32_t lambda = 0.05f * (tr/3.0f + 1e-6f);
+	    float32_t lambda2 = lambda*lambda;
+	    for (int i=0;i<9;i++) JJt_d_buf[i] = JJt_buf[i];
+	    JJt_d_buf[0]+=lambda2; JJt_d_buf[4]+=lambda2; JJt_d_buf[8]+=lambda2;
+	    if (arm_mat_inverse_f32(&JJt_d, &invJJt) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+	    if (arm_mat_mult_f32(&r->jacb_bi_trans, &invJJt, &r->jacb_bi_inv) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+	    // Jacobian의 Inverse의 Transpose 계산
+		if (arm_mat_trans_f32(&r->jacb_bi_inv, &r->jacb_bi_trans_inv) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+		// Taskspace Mass Matrix 계산
+		float32_t Minv_buf[9], A_buf[9], Ad_buf[9], Lambda_buf[9], tmp_buf[9];
+		arm_matrix_instance_f32 Minv, A, Ad, Lambda, tmp;
+		arm_mat_init_f32(&Minv,  3,3, Minv_buf);
+		arm_mat_init_f32(&A,     3,3, A_buf);
+		arm_mat_init_f32(&Ad,    3,3, Ad_buf);
+		arm_mat_init_f32(&Lambda,3,3, Lambda_buf);
+		arm_mat_init_f32(&tmp,   3,3, tmp_buf);
+		if (arm_mat_inverse_f32(&r->M_bi, &Minv) == ARM_MATH_SUCCESS) { // M이 특이행렬이 아니면 계산하고, 특이행렬이면 안전하게 이전값 유지
+		    // A = J * Minv * J^T
+		    if (arm_mat_mult_f32(&r->jacb_bi, &Minv, &tmp) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+		    if (arm_mat_mult_f32(&tmp, &r->jacb_bi_trans, &A) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+		    // 댐핑(선택): A_d = A + μ^2 I
+		    for (int i=0;i<9;i++) Ad_buf[i] = A_buf[i];
+		    float32_t mu2 = 0.0f; // 필요 시 1e-4 ~ 1e-2 범위
+		    Ad_buf[0]+=mu2; Ad_buf[4]+=mu2; Ad_buf[8]+=mu2;
+		    if (arm_mat_inverse_f32(&Ad, &Lambda) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+		    // 최종 작업공간 관성 M_bi_task = Lambda
+		    for (int i=0;i<9;i++) r->M_bi_task.pData[i] = Lambda_buf[i];
 		}
-//	cal_status = arm_mat_inverse_f32(&r->jacb_bi, &r->jacb_bi_inv);
-//	if (cal_status != ARM_MATH_SUCCESS) {
-//		sta = 4;
-//		Error_Handler();
-//	}
-//	cal_status = arm_mat_trans_f32(&r->jacb_bi_inv, &r->jacb_bi_trans_inv);
-//	if (cal_status != ARM_MATH_SUCCESS) {
-//		sta = 4;
-//		Error_Handler();
-//	}
-
-//	// 5. model params update (Manipulator Dynamics model 채우기)
-//	float32_t l2_cm_d3_cb = r->l2 * c_m + r->d3 * c_b;
-//	r->M_bi.pData[0 * r->M_bi.numCols + 0] = r->J1
-//											+ r->m2 * (r->d2 * c_m) * (r->d2 * c_m)
-//											+ r->m3 *  l2_cm_d3_cb * l2_cm_d3_cb;
-//	r->M_bi.pData[0 * r->M_bi.numCols + 1] = - r->m2 * r->d2 * r->d2 * s_m * c_m
-//											- r->m3 * l2_cm_d3_cb * r->l2 * s_m;
-//	r->M_bi.pData[0 * r->M_bi.numCols + 2] = - r->m3 * l2_cm_d3_cb * r->d3 * s_b;
-//	r->M_bi.pData[1 * r->M_bi.numCols + 0] = r->M_bi.pData[0 * r->M_bi.numCols + 1];
-//	r->M_bi.pData[1 * r->M_bi.numCols + 1] = r->J2
-//											+ r->m3 * r->l2 * r->l2;
-//	r->M_bi.pData[1 * r->M_bi.numCols + 2] = r->m3 * r->l2 * r->d3 * c_bm;
-//	r->M_bi.pData[2 * r->M_bi.numCols + 0] = r->M_bi.pData[0 * r->M_bi.numCols + 2];
-//	r->M_bi.pData[2 * r->M_bi.numCols + 1] = r->M_bi.pData[1 * r->M_bi.numCols + 2];
-//	r->M_bi.pData[2 * r->M_bi.numCols + 2] = r->J3;
-//	r->C_bi.pData[0]= 2.0f * (- r->m2 * r->d2 * r->d2 * c_m * s_m * r->qdot_bi.pData[1]
-//								- r->m3 * (r->l2 * c_m + r->d3 * c_b) * ((r->l2 * s_m + r->d3 * s_b) * r->qdot_bi.pData[1] + r->d3 * s_b * (r->qdot_bi.pData[2] - r->qdot_bi.pData[1]))
-//							 ) * r->qdot_bi.pData[0];
-//	r->C_bi.pData[1] = - r->m3 * r->l2 * r->d3 * s_bm * (r->qdot_bi.pData[2] + r->qdot_bi.pData[1]) * (r->qdot_bi.pData[2] - r->qdot_bi.pData[1]);
-//	r->C_bi.pData[2] = r->m3 * r->l2 * r->d3 * s_bm * (r->qdot_bi.pData[1] * r->qdot_bi.pData[1]);
-//	r->G_bi.pData[0] = 0.0f;
-//	r->G_bi.pData[1] = g * (r->m2 * r->d2 + r->m3 * r->l2) * c_m;
-//	r->G_bi.pData[2] = g * r->m3 * r->d3 * c_b;
-//	float32_t temp_buffer[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-//	arm_matrix_instance_f32 temp;
-//	arm_mat_init_f32(&temp,  3, 3, temp_buffer);
-//	cal_status = arm_mat_mult_f32(&r->M_bi, &r->jacb_bi_inv, &temp);
-//	if (cal_status != ARM_MATH_SUCCESS) {
-//		sta = 4;
-//		Error_Handler();
-//	}
-//	cal_status = arm_mat_mult_f32(&r->jacb_bi_trans_inv, &temp, &r->M_bi_task);
-//	if (cal_status != ARM_MATH_SUCCESS) {
-//		sta = 4;
-//		Error_Handler();
-//	}
-//	r->M_bi_task_nominal.pData[0 * r->M_bi_task_nominal.numCols + 0] = r->M_bi_task.pData[0 * r->M_bi_task.numCols + 0];
-//	r->M_bi_task_nominal.pData[0 * r->M_bi_task_nominal.numCols + 1] = 0;
-//	r->M_bi_task_nominal.pData[0 * r->M_bi_task_nominal.numCols + 2] = 0;
-//	r->M_bi_task_nominal.pData[1 * r->M_bi_task_nominal.numCols + 0] = 0;
-//	r->M_bi_task_nominal.pData[1 * r->M_bi_task_nominal.numCols + 1] = r->M_bi_task.pData[1 * r->M_bi_task.numCols + 1];
-//	r->M_bi_task_nominal.pData[1 * r->M_bi_task_nominal.numCols + 2] = 0;
-//	r->M_bi_task_nominal.pData[2 * r->M_bi_task_nominal.numCols + 0] = 0;
-//	r->M_bi_task_nominal.pData[2 * r->M_bi_task_nominal.numCols + 1] = 0;
-//	r->M_bi_task_nominal.pData[2 * r->M_bi_task_nominal.numCols + 2] = r->M_bi_task.pData[2 * r->M_bi_task.numCols + 2];
+		// DOB를 위한 Nominal Taskspace Mass Matrix 계산
+		r->M_bi_task_nominal.pData[0 * r->M_bi_task_nominal.numCols + 0] = r->M_bi_task.pData[0 * r->M_bi_task.numCols + 0];
+		r->M_bi_task_nominal.pData[0 * r->M_bi_task_nominal.numCols + 1] = 0;
+		r->M_bi_task_nominal.pData[0 * r->M_bi_task_nominal.numCols + 2] = 0;
+		r->M_bi_task_nominal.pData[1 * r->M_bi_task_nominal.numCols + 0] = 0;
+		r->M_bi_task_nominal.pData[1 * r->M_bi_task_nominal.numCols + 1] = r->M_bi_task.pData[1 * r->M_bi_task.numCols + 1];
+		r->M_bi_task_nominal.pData[1 * r->M_bi_task_nominal.numCols + 2] = 0;
+		r->M_bi_task_nominal.pData[2 * r->M_bi_task_nominal.numCols + 0] = 0;
+		r->M_bi_task_nominal.pData[2 * r->M_bi_task_nominal.numCols + 1] = 0;
+		r->M_bi_task_nominal.pData[2 * r->M_bi_task_nominal.numCols + 2] = r->M_bi_task.pData[2 * r->M_bi_task.numCols + 2];
+	}
+	else // Singular Point에 가깝지 않으면 직접 Jacobian의 Inverse 계산
+	{
+		// Jacobian의 Inverse 계산
+	    r->jacb_bi_inv.pData[0*r->jacb_bi_inv.numCols + 0] = -s_1 / L;
+	    r->jacb_bi_inv.pData[0*r->jacb_bi_inv.numCols + 1] =  c_1 / L;
+	    r->jacb_bi_inv.pData[0*r->jacb_bi_inv.numCols + 2] =  0.0f;
+	    r->jacb_bi_inv.pData[1*r->jacb_bi_inv.numCols + 0] = -c_1 * c_b / (r->l2 * Delta);
+	    r->jacb_bi_inv.pData[1*r->jacb_bi_inv.numCols + 1] = -c_b * s_1 / (r->l2 * Delta);
+	    r->jacb_bi_inv.pData[1*r->jacb_bi_inv.numCols + 2] = -s_b / (r->l2 * Delta);
+	    r->jacb_bi_inv.pData[2*r->jacb_bi_inv.numCols + 0] =  c_1 * c_m / (r->l3 * Delta);
+	    r->jacb_bi_inv.pData[2*r->jacb_bi_inv.numCols + 1] =  c_m * s_1 / (r->l3 * Delta);
+	    r->jacb_bi_inv.pData[2*r->jacb_bi_inv.numCols + 2] =  s_m / (r->l3 * Delta);
+	    // Jacobian의 Inverse의 Transpose 계산
+	    if (arm_mat_trans_f32(&r->jacb_bi_inv, &r->jacb_bi_trans_inv) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+	    // Taskspace Mass Matrix 계산
+		float32_t MJI_buf[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+		arm_matrix_instance_f32 MJI;
+		arm_mat_init_f32(&MJI,  3, 3, MJI_buf);
+		if (arm_mat_mult_f32(&r->M_bi, &r->jacb_bi_inv, &MJI) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+		if (arm_mat_mult_f32(&r->jacb_bi_trans_inv, &MJI, &r->M_bi_task) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+		// DOB를 위한 Nominal Taskspace Mass Matrix 계산
+		r->M_bi_task_nominal.pData[0 * r->M_bi_task_nominal.numCols + 0] = r->M_bi_task.pData[0 * r->M_bi_task.numCols + 0];
+		r->M_bi_task_nominal.pData[0 * r->M_bi_task_nominal.numCols + 1] = 0;
+		r->M_bi_task_nominal.pData[0 * r->M_bi_task_nominal.numCols + 2] = 0;
+		r->M_bi_task_nominal.pData[1 * r->M_bi_task_nominal.numCols + 0] = 0;
+		r->M_bi_task_nominal.pData[1 * r->M_bi_task_nominal.numCols + 1] = r->M_bi_task.pData[1 * r->M_bi_task.numCols + 1];
+		r->M_bi_task_nominal.pData[1 * r->M_bi_task_nominal.numCols + 2] = 0;
+		r->M_bi_task_nominal.pData[2 * r->M_bi_task_nominal.numCols + 0] = 0;
+		r->M_bi_task_nominal.pData[2 * r->M_bi_task_nominal.numCols + 1] = 0;
+		r->M_bi_task_nominal.pData[2 * r->M_bi_task_nominal.numCols + 2] = r->M_bi_task.pData[2 * r->M_bi_task.numCols + 2];
+	}
 }
 
 void robot_state_update(Manipulator *r)
@@ -755,6 +835,7 @@ void robot_state_update(Manipulator *r)
 		r->qdot_bi_old.pData [i] = r->axis_configuration[i] * r->motors[i].vel_old;
 		r->qddot_bi.pData	 [i] = r->axis_configuration[i] * r->motors[i].acc;
 		r->qddot_bi_old.pData[i] = r->axis_configuration[i] * r->motors[i].acc_old;
+		r->tau_bi_excess.pData[i] = r->axis_configuration[i] * r->motors[i].control_input_excess;
 	}
 
 	// 2. model params update
@@ -781,24 +862,26 @@ void robot_state_update(Manipulator *r)
 	// 6. manipulator control input update
 	for (int i = 0; i < NUM_MOTORS; ++i) {
 		r->tau_bi_old.pData[i] = r->tau_bi.pData[i];
+		r->pos_pid_output_excess_old.pData[i] = r->pos_pid_output_excess.pData[i];
 	}
+
+	// 7. anti-windup term update
+	if (arm_mat_mult_f32(&r->jacb_bi_trans_inv, &r->tau_bi_excess, &r->pos_pid_output_excess) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
 }
 
-void robot_pos_pid_gain_setting(Manipulator *r, float32_t* kp, float32_t* kd, float32_t* ki, float32_t* cutoff)
+void robot_pos_pid_gain_setting(Manipulator *r, float32_t* kp, float32_t* kd, float32_t* ki, float32_t* k_windup, float32_t* cutoff)
 {
 	for (int i = 0; i < NUM_TASK_DEG; ++i) {
 		r->pos_kp[i] = kp[i];
 		r->pos_kd[i] = kd[i];
 		r->pos_ki[i] = ki[i];
+		r->pos_k_windup[i] = k_windup[i];
 		r->cutoff_pos_pid[i] = cutoff[i];
 	}
 }
 
 void robot_pos_pid(Manipulator *r, arm_matrix_instance_f32 pos_ref)
 {
-	// 1. matrix calculation status 변수 생성
-	arm_status cal_status;
-
 	for (int i = 0; i < NUM_TASK_DEG; ++i) {
 		float32_t tau = 1 / (2 * pi * r->cutoff_pos_pid[i]);
 
@@ -807,17 +890,13 @@ void robot_pos_pid(Manipulator *r, arm_matrix_instance_f32 pos_ref)
 		r->pos_error.pData[i] = r->posXYZ_ref.pData[i] - r->posXYZ.pData[i];
 
 		r->pos_P_term.pData[i] = r->pos_kp[i] * r->pos_error.pData[i];
-		r->pos_I_term.pData[i] = r->pos_ki[i] * Ts / 2.0 * (r->pos_error.pData[i] + r->pos_error_old.pData[i]) + r->pos_I_term_old.pData[i];
+		r->pos_I_term.pData[i] = r->pos_ki[i] * Ts / 2.0 * (r->pos_error.pData[i] - r->pos_k_windup[i] * r->pos_pid_output_excess.pData[i] + r->pos_error_old.pData[i] - r->pos_k_windup[i] * r->pos_pid_output_excess_old.pData[i]) + r->pos_I_term_old.pData[i];
 		r->pos_D_term.pData[i] = 2.0 * r->pos_kd[i] / (2.0 * tau + Ts) * (r->pos_error.pData[i] - r->pos_error_old.pData[i]) - (Ts - 2.0 * tau) / (2.0 * tau + Ts) * r->pos_D_term_old.pData[i];
 
 		r->pos_pid_output.pData[i] = (r->pos_P_term.pData[i] + r->pos_I_term.pData[i] + r->pos_D_term.pData[i]);
 	}
 
-	cal_status = arm_mat_mult_f32(&r->jacb_bi_trans, &r->pos_pid_output, &r->tau_bi);
-	if (cal_status != ARM_MATH_SUCCESS) {
-		sta = 4;
-		Error_Handler();
-	}
+	if (arm_mat_mult_f32(&r->jacb_bi_trans, &r->pos_pid_output, &r->tau_bi) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
 }
 
 /* USER CODE END 0 */
@@ -931,6 +1010,9 @@ int main(void)
 	// manipulator control input
 	arm_mat_init_f32(&strawberry_robot.tau_bi, NUM_MOTORS, 1, strawberry_robot.tau_bi_buffer);
 	arm_mat_init_f32(&strawberry_robot.tau_bi_old, NUM_MOTORS, 1, strawberry_robot.tau_bi_old_buffer);
+	arm_mat_init_f32(&strawberry_robot.tau_bi_excess, NUM_MOTORS, 1, strawberry_robot.tau_bi_excess_buffer);
+	arm_mat_init_f32(&strawberry_robot.pos_pid_output_excess, NUM_TASK_DEG, 1, strawberry_robot.pos_pid_output_excess_buffer);
+	arm_mat_init_f32(&strawberry_robot.pos_pid_output_excess_old, NUM_TASK_DEG, 1, strawberry_robot.pos_pid_output_excess_old_buffer);
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
@@ -1296,9 +1378,9 @@ void ControlTask(void *argument)
 				// 1. 로봇의 상태 업데이트
 				robot_state_update(&strawberry_robot);
 				// 2. 로봇의 task space PID값 설정
-				robot_pos_pid_gain_setting(&strawberry_robot, taskspace_p_gain, taskspace_d_gain, taskspace_i_gain, taskspace_pid_cutoff);
+				robot_pos_pid_gain_setting(&strawberry_robot, taskspace_p_gain, taskspace_d_gain, taskspace_i_gain, taskspace_windup_gain, taskspace_pid_cutoff);
 				// 3. 로봇의 Control Input 계산
-				target_posXYZ.pData[0] = homing_posXYZ.pData[0] + 0.2 * sinf(2 * pi * 5 * (ctrl_time_ms)/1000);
+				target_posXYZ.pData[0] = homing_posXYZ.pData[0] + 0.2f * sinf(2.0f * pi * 5.0f * ((float32_t)ctrl_time_ms) / 1000.0f);
 				robot_pos_pid(&strawberry_robot, target_posXYZ);
 				for (int i = 0; i < NUM_MOTORS; ++i)
 				{
@@ -1339,6 +1421,7 @@ void ControlTask(void *argument)
 					// 4. 모터 제어 입력 초기화
 					strawberry_robot.motors[i].control_input = 0.0;
 					strawberry_robot.motors[i].control_input_old = 0.0;
+					strawberry_robot.motors[i].control_input_excess = 0.0;
 					// 5. 모터 엔코더 값 초기화
 					strawberry_robot.motors[i].pos = 0.0;
 					strawberry_robot.motors[i].pos_old = strawberry_robot.motors[i].pos;
@@ -1362,8 +1445,6 @@ void ControlTask(void *argument)
 					strawberry_robot.motors[i].vel_I_term = 0.0;
 					strawberry_robot.motors[i].vel_I_term_old = strawberry_robot.motors[i].vel_I_term;
 					// 9. 로봇 상태 값 초기화
-//					strawberry_robot.q.pData[i] = 0.0;
-//					strawberry_robot.q_bi.pData[i] = 0.0;
 					strawberry_robot.qdot_bi.pData[i] = 0.0;
 					strawberry_robot.qddot_bi.pData[i] = 0.0;
 					// 10. manipulator task space DOB control state 초기화
@@ -1373,6 +1454,7 @@ void ControlTask(void *argument)
 					strawberry_robot.DOB_filtered_rhs.pData[i] = 0.0;
 					// 11. manipulator control input 초기화
 					strawberry_robot.tau_bi.pData[i] = 0.0;
+					strawberry_robot.tau_bi_excess.pData[i] = 0.0;
 				}
 				for (int i = 0; i < NUM_TASK_DEG; ++i)
 				{
@@ -1387,7 +1469,17 @@ void ControlTask(void *argument)
 					strawberry_robot.pos_I_term.pData[i] = 0.0;
 					strawberry_robot.pos_D_term.pData[i] = 0.0;
 					strawberry_robot.pos_pid_output.pData[i] = 0.0;
+					strawberry_robot.pos_pid_output_excess.pData[i] = 0.0;
+					strawberry_robot.pos_pid_output_excess_old.pData[i] = 0.0;
 				}
+				for (int i=0;i<9;i++) strawberry_robot.M_bi_task.pData[i] = 0.0f;
+				strawberry_robot.M_bi_task.pData[0]=1.0f;
+				strawberry_robot.M_bi_task.pData[4]=1.0f;
+				strawberry_robot.M_bi_task.pData[8]=1.0f;
+				for (int i=0;i<9;i++) strawberry_robot.M_bi_task_nominal.pData[i] = 0.0f;
+				strawberry_robot.M_bi_task_nominal.pData[0]=1.0f;
+				strawberry_robot.M_bi_task_nominal.pData[4]=1.0f;
+				strawberry_robot.M_bi_task_nominal.pData[8]=1.0f;
 				// 14. 로봇의 남은 과거 상태 파라미터 초기화
 				robot_state_update(&strawberry_robot);
 				// 15. 로봇의 상태를 Control Enable 상태로 초기화
@@ -1424,54 +1516,37 @@ void DataLoggingTask(void *argument)
 			// portTICK_PERIOD_MS 는 1 틱이 ms 단위로 몇 ms인지 정의 (보통 1)
 			logging_time_ms += (logging_tick_period * portTICK_PERIOD_MS);
 
-			// 5) 현재 각 모터의 상태를 출력
-			// 커서를 (NUM_MOTORS + 1)줄 위로 이동
-			printf("\033[%dA", NUM_MOTORS + 9);
-			printf("\033[2K\rrunning time: %8.3f\r\n", (float32_t) ctrl_time_ms/1000);
-			printf("\033[2K\rtime_interval: %8.3f\r\n", (float32_t) (ctrl_time_ms - ctrl_time_ms_old)/1000);
+			// 5) 현재 로봇의 상태를 Serial 통신을 통해 PC로 전송
 			if (strawberry_robot.current_robot_mode == 1) // 로봇의 현재 상태가 Control Enable인 경우
 			{
-				printf("\033[2K\rMotor State--------------------------------------------------------------------------------------------------------\r\n");
-				for (int i = 0; i < NUM_MOTORS; ++i)
-				{
-					printf("\033[2K\r");  // 현재 줄 지우기
-					printf("motor id: %d,\t motor state: %d,\t motor position: %8.3f,\t motor velocity: %8.3f,\t motor current: %8.3f\r\n",
-							strawberry_robot.motors[i].id, strawberry_robot.motors[i].current_motor_mode, strawberry_robot.motors[i].pos, strawberry_robot.motors[i].vel, strawberry_robot.motors[i].control_input);
-				}
-				printf("\033[2K\rRobot State--------------------------------------------------------------------------------------------------------\r\n");
-				printf("\033[2K\r");  // 현재 줄 지우기
-				printf("posXref:  %8.3f,\t posYref:  %8.3f,\t posZref:  %8.3f\r\n",
-						strawberry_robot.posXYZ_ref.pData[0], strawberry_robot.posXYZ_ref.pData[1], strawberry_robot.posXYZ_ref.pData[2]);
-				printf("\033[2K\r");  // 현재 줄 지우기
-				printf("posX:     %8.3f,\t posY:     %8.3f,\t posZ:     %8.3f\r\n",
-						strawberry_robot.posXYZ.pData[0], strawberry_robot.posXYZ.pData[1], strawberry_robot.posXYZ.pData[2]);
-				printf("\033[2K\r");  // 현재 줄 지우기
-				printf("err_posX: %8.3f,\t err_posY: %8.3f,\t err_posZ: %8.3f\r\n",
-						strawberry_robot.pos_error.pData[0], strawberry_robot.pos_error.pData[1], strawberry_robot.pos_error.pData[2]);
-				printf("\033[2K\r");  // 현재 줄 지우기
-				printf("velX:     %8.3f,\t velY:     %8.3f,\t velZ:     %8.3f\r\n",
-						strawberry_robot.velXYZ.pData[0], strawberry_robot.velXYZ.pData[1], strawberry_robot.velXYZ.pData[2]);
+				printf("[");
+				printf("%8.3f, %8.3f, %8d, ", (float32_t) ctrl_time_ms/1000, (float32_t) (ctrl_time_ms - ctrl_time_ms_old)/1000, strawberry_robot.current_robot_mode);
+				printf("%8d, %8d, %8.3f, ", strawberry_robot.motors[0].id, strawberry_robot.motors[0].current_motor_mode, strawberry_robot.motors[0].control_input);
+				printf("%8d, %8d, %8.3f, ", strawberry_robot.motors[1].id, strawberry_robot.motors[1].current_motor_mode, strawberry_robot.motors[1].control_input);
+				printf("%8d, %8d, %8.3f, ", strawberry_robot.motors[2].id, strawberry_robot.motors[2].current_motor_mode, strawberry_robot.motors[2].control_input);
+				printf("%8.3f, %8.3f, %8.3f, ", strawberry_robot.q_bi.pData[0], strawberry_robot.q_bi.pData[1], strawberry_robot.q_bi.pData[2]);
+				printf("%8.3f, %8.3f, %8.3f, ", strawberry_robot.posXYZ_ref.pData[0], strawberry_robot.posXYZ_ref.pData[1], strawberry_robot.posXYZ_ref.pData[2]);
+				printf("%8.3f, %8.3f, %8.3f, ", strawberry_robot.posXYZ.pData[0], strawberry_robot.posXYZ.pData[1], strawberry_robot.posXYZ.pData[2]);
+				printf("%8.3f, %8.3f, %8.3f, ", strawberry_robot.velXYZ.pData[0], strawberry_robot.velXYZ.pData[1], strawberry_robot.velXYZ.pData[2]);
+				printf("%8.3f, %8.3f, %8.3f, ", strawberry_robot.pos_I_term.pData[0], strawberry_robot.pos_I_term.pData[1], strawberry_robot.pos_I_term.pData[2]);
+				printf("%8.3f, %8.3f, %8.3f", strawberry_robot.pos_pid_output.pData[0], strawberry_robot.pos_pid_output.pData[1], strawberry_robot.pos_pid_output.pData[2]);
+				printf("]\r\n");
 			}
 			else // 로봇의 현재 상태가 Control Disable인 경우
 			{
-				printf("Motor State--------------------------------------------------------------------------------------------------------\r\n");
-				for (int i = 0; i < NUM_MOTORS; ++i)
-				{
-					printf("\033[2K\r");  // 현재 줄 지우기
-					printf("motor id: %d,\t motor state: %d\r\n",
-							strawberry_robot.motors[i].id, strawberry_robot.motors[i].current_motor_mode);
-				}
-				printf("Robot State--------------------------------------------------------------------------------------------------------\r\n");
-				printf("\033[2K\r");  // 현재 줄 지우기
-				printf("No position reference\r\n");
-				printf("\033[2K\r");  // 현재 줄 지우기
-				printf("No position measurement\r\n");
-				printf("\033[2K\r");  // 현재 줄 지우기
-				printf("No position error\r\n");
-				printf("\033[2K\r");  // 현재 줄 지우기
-				printf("No velocity measurement\r\n");
+				printf("[");
+				printf("%8.3f, %8.3f, %8d, ", (float32_t) ctrl_time_ms/1000, (float32_t) (ctrl_time_ms - ctrl_time_ms_old)/1000, strawberry_robot.current_robot_mode);
+				printf("%8d, %8d, %8.3f, ", strawberry_robot.motors[0].id, strawberry_robot.motors[0].current_motor_mode, 0.0f);
+				printf("%8d, %8d, %8.3f, ", strawberry_robot.motors[1].id, strawberry_robot.motors[1].current_motor_mode, 0.0f);
+				printf("%8d, %8d, %8.3f, ", strawberry_robot.motors[2].id, strawberry_robot.motors[2].current_motor_mode, 0.0f);
+				printf("%8.3f, %8.3f, %8.3f, ", 0.0f, 0.0f, 0.0f);
+				printf("%8.3f, %8.3f, %8.3f, ", 0.0f, 0.0f, 0.0f);
+				printf("%8.3f, %8.3f, %8.3f, ", 0.0f, 0.0f, 0.0f);
+				printf("%8.3f, %8.3f, %8.3f, ", 0.0f, 0.0f, 0.0f);
+				printf("%8.3f, %8.3f, %8.3f, ", 0.0f, 0.0f, 0.0f);
+				printf("%8.3f, %8.3f, %8.3f", 0.0f, 0.0f, 0.0f);
+				printf("]\r\n");
 			}
-			printf("Plotting End--------------------------------------------------------------------------------------------------------\r\n");
 		}
   /* USER CODE END DataLoggingTask */
 }
