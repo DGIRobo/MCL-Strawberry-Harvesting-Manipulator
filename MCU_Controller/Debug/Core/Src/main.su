@@ -29,7 +29,7 @@
 ../Core/Src/main.c:1247:13:MX_USART3_UART_Init	8	static
 ../Core/Src/main.c:1295:13:MX_GPIO_Init	48	static
 ../Core/Src/main.c:1335:6:ControlTask	80	static
-../Core/Src/main.c:1509:6:DataLoggingTask	40	static
-../Core/Src/main.c:1565:6:MPU_Config	24	static
-../Core/Src/main.c:1600:6:HAL_TIM_PeriodElapsedCallback	16	static
-../Core/Src/main.c:1618:6:Error_Handler	16	static
+../Core/Src/main.c:1509:6:DataLoggingTask	368	static
+../Core/Src/main.c:1563:6:MPU_Config	24	static
+../Core/Src/main.c:1598:6:HAL_TIM_PeriodElapsedCallback	16	static
+../Core/Src/main.c:1616:6:Error_Handler	16	static

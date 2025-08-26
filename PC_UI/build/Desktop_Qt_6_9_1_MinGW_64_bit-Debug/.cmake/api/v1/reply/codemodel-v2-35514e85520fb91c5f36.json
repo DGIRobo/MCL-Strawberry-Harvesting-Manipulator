@@ -1,0 +1,79 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-Debug-44c685168705724d4b01.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "PC_UI",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "PC_UI::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-PC_UI-Debug-55b86604ba6d29480eb8.json",
+					"name" : "PC_UI",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "PC_UI_autogen::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-PC_UI_autogen-Debug-2b360c7fa5e2418edd95.json",
+					"name" : "PC_UI_autogen",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "PC_UI_autogen_timestamp_deps::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-PC_UI_autogen_timestamp_deps-Debug-fa148a0dd9a02ec3a3ab.json",
+					"name" : "PC_UI_autogen_timestamp_deps",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "C:/Users/jihwan/Git-Repos/MCL-Strawberry-Harvesting-Manipulator/PC_UI/build/Desktop_Qt_6_9_1_MinGW_64_bit-Debug",
+		"source" : "C:/Users/jihwan/Git-Repos/MCL-Strawberry-Harvesting-Manipulator/PC_UI"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 7
+	}
+}
