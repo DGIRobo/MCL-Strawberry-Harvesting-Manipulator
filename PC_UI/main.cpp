@@ -17,23 +17,23 @@ int main(int argc, char *argv[])
         QMessageBox::critical(&w, "Serial", "Open failed");
     }
 
-    // 2) 새 프레임이 파싱되면: (1) 즉시 수신 → (2) 수신값 읽어 전역에 반영 → (3) UI 갱신 → (4) UI값 읽어 전역에 반영 → (5) 즉시 송신
-    QObject::connect(
-        // (1) 즉시 수신 → (2) 수신값 읽어 전역에 반영
-        serial, &SerialReceiver::frameParsed,
-        &w, [serial, &w]{
-            // (3) UI 갱신
-            w.updateWindow();
+    // 2) 새 프레임이 파싱될 때마다 UI 갱신
+    QObject::connect(serial, &SerialReceiver::frameParsed,
+                     &w,      &MainWindow::updateWindow,
+                     Qt::QueuedConnection);
 
-            // (4) UI값 읽어 전역에 반영 → (5) 전역값을 [ ... ] 로 패킹해 송신
-            if (!serial->sendTxFrameFromGlobals()) {
-                qWarning("TX failed");
-            }
-        },
-        Qt::QueuedConnection // 나중에 시리얼을 워커 스레드로 옮겨도 안전
-    );
+    // 3) 송신은 별도 타이머 주기
+    auto txTimer = new QTimer(&w);
+    txTimer->setTimerType(Qt::PreciseTimer);
+    txTimer->setInterval(20); // 원하는 송신 주기(ms)로 조절: 20~50 권장
+    QObject::connect(txTimer, &QTimer::timeout, &w, [serial, &w]{
+        if (!serial->sendTxFrameFromGlobals()) {
+            qWarning("TX failed");
+        }
+    });
+    txTimer->start();
 
-    // 3) 시작 시 1회 그리기(데이터가 비어 있어도 초기 화면 정리 용)
+    // 4) 시작 시 1회 그리기(데이터가 비어 있어도 초기 화면 정리 용)
     QTimer::singleShot(0, &w, &MainWindow::updateWindow);
 
     // (선택) 보조 타이머: 시리얼이 잠시 멈춰도 UI가 주기적으로 살아있는지 확인하고 싶을 때

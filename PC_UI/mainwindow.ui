@@ -591,6 +591,18 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
       <height>22</height>
      </rect>
     </property>
+    <property name="decimals">
+     <number>3</number>
+    </property>
+    <property name="maximum">
+     <double>0.900000000000000</double>
+    </property>
+    <property name="singleStep">
+     <double>0.001000000000000</double>
+    </property>
+    <property name="value">
+     <double>0.460000000000000</double>
+    </property>
    </widget>
    <widget class="QLabel" name="label_20">
     <property name="geometry">
@@ -649,6 +661,15 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
       <height>22</height>
      </rect>
     </property>
+    <property name="decimals">
+     <number>3</number>
+    </property>
+    <property name="maximum">
+     <double>0.900000000000000</double>
+    </property>
+    <property name="singleStep">
+     <double>0.001000000000000</double>
+    </property>
    </widget>
    <widget class="QDoubleSpinBox" name="targetZpos">
     <property name="geometry">
@@ -658,6 +679,18 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
       <width>81</width>
       <height>22</height>
      </rect>
+    </property>
+    <property name="decimals">
+     <number>3</number>
+    </property>
+    <property name="maximum">
+     <double>0.900000000000000</double>
+    </property>
+    <property name="singleStep">
+     <double>0.001000000000000</double>
+    </property>
+    <property name="value">
+     <double>0.176000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_23">
@@ -959,6 +992,9 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
     <property name="maximum">
      <double>1000.000000000000000</double>
     </property>
+    <property name="singleStep">
+     <double>0.010000000000000</double>
+    </property>
     <property name="value">
      <double>180.000000000000000</double>
     </property>
@@ -1255,6 +1291,15 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
       <width>81</width>
       <height>22</height>
      </rect>
+    </property>
+    <property name="maximum">
+     <double>10.000000000000000</double>
+    </property>
+    <property name="singleStep">
+     <double>0.010000000000000</double>
+    </property>
+    <property name="value">
+     <double>1.000000000000000</double>
     </property>
    </widget>
   </widget>
