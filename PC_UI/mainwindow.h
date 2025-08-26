@@ -46,6 +46,8 @@ public:
     void createPlot(QCustomPlot *plot);
     void drawPlot(QCustomPlot* plot, double t, double y1, std::optional<double> y2 = std::nullopt);
 
+    void readUIParams();
+
 private:
     Ui::MainWindow *ui;
     double key;

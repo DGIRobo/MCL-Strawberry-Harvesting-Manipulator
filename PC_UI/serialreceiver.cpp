@@ -16,11 +16,13 @@ SerialReceiver::SerialReceiver(const QString& portName, int baud, QObject* paren
 }
 
 bool SerialReceiver::open() {
-    return m_port.open(QIODevice::ReadOnly);
+    // 송/수신 모두 할 것이므로 ReadWrite로 오픈
+    return m_port.open(QIODevice::ReadWrite);
 }
 
 void SerialReceiver::close() { m_port.close(); }
 
+// ----- 여기는 수신 코드(onReadyRead/parseFrame) -----
 void SerialReceiver::onReadyRead()
 {
     m_buf += m_port.readAll();
@@ -99,8 +101,85 @@ void SerialReceiver::parseFrame(const QByteArray& payload)
 
     // 여기까지 통과하면 "형식상" 정상 프레임 → 전역에 반영 (락으로 보호)
     gTelemetryLock.lockForWrite();
-    gTelemetry = tmp;
+
+    // 수정: 수신 필드만 개별 복사
+    gTelemetry.t          = tmp.t;
+    gTelemetry.dt         = tmp.dt;
+    gTelemetry.robot_mode = tmp.robot_mode;
+
+    for (int m = 0; m < 3; ++m) {
+        gTelemetry.motors[m] = tmp.motors[m];
+    }
+
+    gTelemetry.q_bi    = tmp.q_bi;
+    gTelemetry.pos_ref = tmp.pos_ref;
+    gTelemetry.pos     = tmp.pos;
+    gTelemetry.vel     = tmp.vel;
+    gTelemetry.pos_I   = tmp.pos_I;
+    gTelemetry.pos_pid = tmp.pos_pid;
+    // (Tx 필드: target_position / posx/y/z_pid_gain 은 건드리지 않음)
+
     gTelemetryLock.unlock();
 
     emit frameParsed();
+}
+
+// ----- 여기는 송신 코드(sendTxFrameFromGlobals/buildTxFrame/) -----
+// 1) 전역에서 값 읽어와 보내기
+bool SerialReceiver::sendTxFrameFromGlobals()
+{
+    std::array<double,4> target;
+    std::array<double,5> gx, gy, gz;
+
+    {   // 전역 읽기 (락)
+        QReadLocker lock(&gTelemetryLock);
+        target = gTelemetry.target_position;
+        gx     = gTelemetry.posx_pid_gain;
+        gy     = gTelemetry.posy_pid_gain;
+        gz     = gTelemetry.posz_pid_gain;
+    }
+    return sendTxFrame(target, gx, gy, gz);
+}
+
+// 2) 직접 값으로 보내기
+bool SerialReceiver::sendTxFrame(const std::array<double,4>& target,
+                                 const std::array<double,5>& posx,
+                                 const std::array<double,5>& posy,
+                                 const std::array<double,5>& posz)
+{
+    if (!m_port.isOpen()) return false;
+    const QByteArray frame = buildTxFrame(target, posx, posy, posz);
+    const qint64 want = frame.size();
+    const qint64 n = m_port.write(frame);
+    if (n != want) return false;
+    // 선택: 동기 flush가 필요하면 wait
+    m_port.waitForBytesWritten(50);
+    return true;
+}
+
+// 3) 실제 프레임 빌더
+QByteArray SerialReceiver::buildTxFrame(const std::array<double,4>& target,
+                                        const std::array<double,5>& posx,
+                                        const std::array<double,5>& posy,
+                                        const std::array<double,5>& posz)
+{
+    auto d = [](double v){ return QLocale::c().toString(v, 'f', 3); }; // 소수 3자리 고정
+    QStringList f;
+
+    // target_position (4)
+    for (double v : target) f << d(v);
+
+    // posx/y/z_pid_gain (각 5)
+    for (double v : posx) f << d(v);
+    for (double v : posy) f << d(v);
+    for (double v : posz) f << d(v);
+
+    // 결과: 총 4 + 5 + 5 + 5 = 19 토큰
+    const QString body = f.join(", ");
+    QByteArray out;
+    out.reserve(body.size() + 4);
+    out += '[';
+    out += body.toLatin1();
+    out += "]\r\n";
+    return out;
 }

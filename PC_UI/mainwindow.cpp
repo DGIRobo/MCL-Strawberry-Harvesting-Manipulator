@@ -25,6 +25,40 @@ MainWindow::MainWindow(QWidget *parent)
     createPlot(ui->q1CurrentPlot);
     createPlot(ui->qmCurrentPlot);
     createPlot(ui->qbCurrentPlot);
+
+    // 1) 텍스트 확정 시마다 전역에 반영 (valueChanged나 editingFinished 중 택1)
+    auto wire = [&](QDoubleSpinBox* sb){
+        connect(sb, &QDoubleSpinBox::editingFinished,
+                this, &MainWindow::readUIParams);
+    };
+
+    // ---- 대상 위치 4개 ----
+    wire(ui->TaskTime);
+    wire(ui->targetXpos);
+    wire(ui->targetYpos);
+    wire(ui->targetZpos);
+
+    // ---- PID gains X/Y/Z 각 5개 ----
+    wire(ui->xposPctrlGain);
+    wire(ui->xposIctrlGain);
+    wire(ui->xposDctrlGain);
+    wire(ui->xposCutoffFreq);
+    wire(ui->xposWindupGain);
+
+    wire(ui->yposPctrlGain);
+    wire(ui->yposIctrlGain);
+    wire(ui->yposDctrlGain);
+    wire(ui->yposCutoffFreq);
+    wire(ui->yposWindupGain);
+
+    wire(ui->zposPctrlGain);
+    wire(ui->zposIctrlGain);
+    wire(ui->yposDctrlGain);
+    wire(ui->zposCutoffFreq);
+    wire(ui->zposWindupGain);
+
+    // 시작 시 한 번 전역에 초기값 저장
+    readUIParams();
 }
 
 MainWindow::~MainWindow()
@@ -170,7 +204,6 @@ void MainWindow::createPlot(QCustomPlot *plot)
     // plot->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignLeft | Qt::AlignTop);
 }
 
-
 void MainWindow::drawPlot(QCustomPlot* plot, double t, double y1, std::optional<double> y2)
 {
     // 1) 데이터 추가 (필수: 그래프 0)
@@ -201,4 +234,41 @@ void MainWindow::drawPlot(QCustomPlot* plot, double t, double y1, std::optional<
 
     // 6) 그리기
     plot->replot(QCustomPlot::rpQueuedReplot); // 즉시 그리기 대신 큐잉(부하↓)
+}
+
+void MainWindow::readUIParams()
+{
+    // UI 값 읽어서 전역 구조체에 저장
+    QWriteLocker lock(&gTelemetryLock);   // 쓰기 락
+
+    gTelemetry.target_position = {
+        ui->TaskTime->value(),
+        ui->targetXpos->value(),
+        ui->targetYpos->value(),
+        ui->targetZpos->value()
+    };
+
+    gTelemetry.posx_pid_gain = {
+        ui->xposPctrlGain->value(),
+        ui->xposIctrlGain->value(),
+        ui->xposDctrlGain->value(),
+        ui->xposCutoffFreq->value(),
+        ui->xposWindupGain->value()
+    };
+
+    gTelemetry.posy_pid_gain = {
+        ui->yposPctrlGain->value(),
+        ui->yposIctrlGain->value(),
+        ui->yposDctrlGain->value(),
+        ui->yposCutoffFreq->value(),
+        ui->yposWindupGain->value()
+    };
+
+    gTelemetry.posz_pid_gain = {
+        ui->zposPctrlGain->value(),
+        ui->zposIctrlGain->value(),
+        ui->zposDctrlGain->value(),
+        ui->zposCutoffFreq->value(),
+        ui->zposWindupGain->value()
+    };
 }
