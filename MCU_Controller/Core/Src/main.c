@@ -1444,9 +1444,9 @@ void ControlTask(void *argument)
 					strawberry_robot.motors[i].pos_error_old = strawberry_robot.motors[i].pos_error;
 					strawberry_robot.motors[i].pos_P_term = 0.0;
 					strawberry_robot.motors[i].pos_I_term = 0.0;
-					strawberry_robot.motors[i].pos_I_term = strawberry_robot.motors[i].pos_I_term_old;
+					strawberry_robot.motors[i].pos_I_term_old = strawberry_robot.motors[i].pos_I_term;
 					strawberry_robot.motors[i].pos_D_term = 0.0;
-					strawberry_robot.motors[i].pos_D_term = strawberry_robot.motors[i].pos_D_term_old;
+					strawberry_robot.motors[i].pos_D_term_old = strawberry_robot.motors[i].pos_D_term;
 					// 8. 모터 Velocity 제어 관련 오차 초기화
 					strawberry_robot.motors[i].vel_error = strawberry_robot.motors[i].vel_ref - strawberry_robot.motors[i].vel;
 					strawberry_robot.motors[i].vel_error_old = strawberry_robot.motors[i].vel_error;
