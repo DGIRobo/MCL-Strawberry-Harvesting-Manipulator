@@ -11,9 +11,9 @@ int main(int argc, char *argv[])
     w.show();
 
     // 1) 시리얼 열기 (포트명/보레이트는 실제 환경에 맞게 변경)
-    auto serial = new SerialReceiver(QStringLiteral("COM3"), 115200, &w);
+    auto serial = new SerialReceiver(QStringLiteral("COM3"), 921600, &w);
     if (!serial->open()) {
-        qWarning("Failed to open serial port COM3 @ 115200");
+        qWarning("Failed to open serial port COM3 @ 921600");
         QMessageBox::critical(&w, "Serial", "Open failed");
     }
 
@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
     // 3) 송신은 별도 타이머 주기
     auto txTimer = new QTimer(&w);
     txTimer->setTimerType(Qt::PreciseTimer);
-    txTimer->setInterval(20); // 원하는 송신 주기(ms)로 조절: 20~50 권장
+    txTimer->setInterval(5); // 원하는 송신 주기(ms)로 조절: 20~50 권장
     QObject::connect(txTimer, &QTimer::timeout, &w, [serial, &w]{
         if (!serial->sendTxFrameFromGlobals()) {
             qWarning("TX failed");

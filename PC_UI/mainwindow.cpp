@@ -53,7 +53,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     wire(ui->zposPctrlGain);
     wire(ui->zposIctrlGain);
-    wire(ui->yposDctrlGain);
+    wire(ui->zposDctrlGain);
     wire(ui->zposCutoffFreq);
     wire(ui->zposWindupGain);
 

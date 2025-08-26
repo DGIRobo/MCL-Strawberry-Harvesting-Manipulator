@@ -27,6 +27,8 @@
 #include "arm_math.h"	// 선형 대수 연산을 위해 사용
 #include "queue.h"		// CAN 통신 수신을 위해 사용
 #include "task.h"		// Real Time task 세팅을 위해 사용
+#include <string.h>
+#include <stdlib.h>   // strtof
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,19 +57,36 @@ UART_HandleTypeDef huart3;
 osThreadId_t ControlHandle;
 const osThreadAttr_t Control_attributes = {
   .name = "Control",
-  .stack_size = 256 * 4,
+  .stack_size = 1024 * 4,
   .priority = (osPriority_t) osPriorityHigh,
 };
 /* Definitions for DataLogging */
 osThreadId_t DataLoggingHandle;
 const osThreadAttr_t DataLogging_attributes = {
   .name = "DataLogging",
-  .stack_size = 256 * 4,
+  .stack_size = 2048 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* USER CODE BEGIN PV */
 // Setting for CAN communication
 uint8_t TxData[8], RxData[8];
+
+// Setting for UART communication
+// ===== UART3 RX 링버퍼 (뮤텍스/FreeRTOS 객체 없이 SPSC) =====
+#define UART3_RBUF_SIZE    2048      // 총 수신 버퍼 크기 (2의 거듭제곱 권장)
+#define UART3_LINE_MAX     1024      // 한 줄 최대 길이
+
+static uint8_t  uart3_rbuf[UART3_RBUF_SIZE];
+static volatile uint16_t uart3_widx = 0;   // ISR가 증가 (writer)
+static volatile uint16_t uart3_ridx = 0;   // Task가 증가 (reader)
+static uint8_t uart3_rx_byte;              // HAL 1바이트 수신용
+
+// 한 줄 조립용 작업버퍼 (Task 전용)
+static char    uart3_line[UART3_LINE_MAX];
+static size_t  uart3_line_len = 0;
+
+// 수신 메시지 필드 수: [t, x, y, z, xKp, xKi, xKd, xCut, xAw, yKp, yKi, yKd, yCut, yAw, zKp, zKi, zKd, zCut, zAw]
+#define PC_MSG_FIELDS 19
 
 // Setting for Control
 #define NUM_MOTORS 3 // motor 3개
@@ -908,6 +927,137 @@ void robot_pos_pid(Manipulator *r, arm_matrix_instance_f32 pos_ref)
 	if (arm_mat_mult_f32(&r->jacb_bi_trans, &r->pos_pid_output, &r->tau_bi) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART3)
+  {
+    // 링버퍼에 바이트 저장 (넘치면 가장 오래된 바이트를 버림)
+    uint16_t next = (uart3_widx + 1) & (UART3_RBUF_SIZE - 1);
+    if (next == uart3_ridx) {
+      // 버퍼 풀 → reader를 한 칸 앞으로 밀어 가장 오래된 것 1바이트 drop
+      uart3_ridx = (uart3_ridx + 1) & (UART3_RBUF_SIZE - 1);
+    }
+    uart3_rbuf[uart3_widx] = uart3_rx_byte;
+    uart3_widx = next;
+
+    // 다음 바이트 수신 재개
+    HAL_UART_Receive_IT(&huart3, &uart3_rx_byte, 1);
+  }
+}
+
+// 링버퍼에서 1바이트 pop (읽을 게 없으면 0 반환)
+static int uart3_rb_pop(uint8_t *out)
+{
+  if (uart3_ridx == uart3_widx) return 0;  // empty
+  *out = uart3_rbuf[uart3_ridx];
+  uart3_ridx = (uart3_ridx + 1) & (UART3_RBUF_SIZE - 1);
+  return 1;
+}
+
+// 좌우 공백 제거
+static inline void trim_spaces(char *s) {
+  char *p = s;
+  while (*p==' ' || *p=='\t') ++p;
+  if (p!=s) memmove(s, p, strlen(p)+1);
+  for (int i=(int)strlen(s)-1; i>=0 && (s[i]==' ' || s[i]=='\t'); --i) s[i]='\0';
+}
+
+// 한 줄을 파싱: [ ... 19개 ... ] 에서 float들 추출
+static int parse_pc_line_to_floats(char *line, float vals[], int maxn)
+{
+  // 대괄호 범위 찾기
+  char *L = strchr(line, '[');
+  char *R = strrchr(line, ']');
+  if (!L || !R || R <= L) return 0;
+
+  *R = '\0';   // ']' 대신 문자열 끝
+  ++L;         // '[' 다음부터
+
+  int count = 0;
+  char *save = NULL;
+  char *tok = strtok_r(L, ",", &save);
+  while (tok && count < maxn) {
+    trim_spaces(tok);
+    vals[count++] = strtof(tok, NULL);
+    tok = strtok_r(NULL, ",", &save);
+  }
+  return count;
+}
+
+// 파싱 결과를 시스템 파라미터에 반영 (요청대로 DataLoggingTask에서 직접 반영)
+static void apply_pc_floats(const float v[PC_MSG_FIELDS])
+{
+	// 인덱스 매핑
+	const int T   = 0;
+	const int tx  = 1,  ty  = 2,  tz  = 3;
+	const int xKp = 4,  xKi = 5,  xKd = 6,  xCf = 7,  xAw = 8;
+	const int yKp = 9,  yKi =10,  yKd =11,  yCf =12,  yAw =13;
+	const int zKp =14,  zKi =15,  zKd =16,  zCf =17,  zAw =18;
+
+	// 간단한 유효성 (원하면 강화)
+	if (v[xCf] <= 0 || v[yCf] <= 0 || v[zCf] <= 0) return;
+
+	// 1) taskTime
+	//  gTaskTime_s = v[T];
+
+	// 2) 타겟 위치 (사용자 전역/객체)
+	//  target_posXYZ.pData[0] = v[tx];
+	//  target_posXYZ.pData[1] = v[ty];
+	//  target_posXYZ.pData[2] = v[tz];
+
+	// 3) XYZ 게인/컷오프/안티윈드업
+	taskspace_p_gain[0]     	   = v[xKp];
+	taskspace_i_gain[0]     	   = v[xKi];
+	taskspace_d_gain[0]     	   = v[xKd];
+	taskspace_pid_cutoff[0]        = v[xCf];
+	taskspace_windup_gain[0]       = v[xAw];
+
+	taskspace_p_gain[1]     	   = v[yKp];
+	taskspace_i_gain[1]     	   = v[yKi];
+	taskspace_d_gain[1]     	   = v[yKd];
+	taskspace_pid_cutoff[1]        = v[yCf];
+	taskspace_windup_gain[1]       = v[yAw];
+
+	taskspace_p_gain[2]     	   = v[zKp];
+	taskspace_i_gain[2]    	       = v[zKi];
+	taskspace_d_gain[2]     	   = v[zKd];
+	taskspace_pid_cutoff[2]        = v[zCf];
+	taskspace_windup_gain[2]       = v[zAw];
+}
+
+// 링버퍼에서 줄 단위로 꺼내 처리 (CR 무시, LF로 완료)
+static void uart3_poll_and_process_lines(void)
+{
+  uint8_t b;
+  while (uart3_rb_pop(&b)) {
+    char c = (char)b;
+    if (c == '\r') continue;
+
+    if (c == '\n') {
+      if (uart3_line_len > 0) {
+        uart3_line[uart3_line_len] = '\0';
+
+        float vals[PC_MSG_FIELDS];
+        int n = parse_pc_line_to_floats(uart3_line, vals, PC_MSG_FIELDS);
+        if (n == PC_MSG_FIELDS) {
+          apply_pc_floats(vals);
+        } else {
+          // 형식 불일치 시 무시(필요하면 printf로 경고)
+          // printf("UART parse fail: got %d fields\r\n", n);
+        }
+        uart3_line_len = 0;
+      }
+    } else {
+      if (uart3_line_len < UART3_LINE_MAX - 1) {
+        uart3_line[uart3_line_len++] = c;
+      } else {
+        // 라인 과길이 → 드롭 & 리셋
+        uart3_line_len = 0;
+      }
+    }
+  }
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -1048,6 +1198,8 @@ int main(void)
   MX_FDCAN1_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
+  // UART3 1바이트 인터럽트 수신 시작
+  HAL_UART_Receive_IT(&huart3, &uart3_rx_byte, 1);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -1255,7 +1407,7 @@ static void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
+  huart3.Init.BaudRate = 921600;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
@@ -1302,12 +1454,29 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0|GPIO_PIN_14, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PC13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PB0 PB14 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_14;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
@@ -1525,7 +1694,10 @@ void DataLoggingTask(void *argument)
 			// portTICK_PERIOD_MS 는 1 틱이 ms 단위로 몇 ms인지 정의 (보통 1)
 			logging_time_ms += (logging_tick_period * portTICK_PERIOD_MS);
 
-			// 5) 현재 로봇의 상태를 Serial 통신을 통해 PC로 전송
+			// 5) 여기서 PC로부터 들어온 명령을 처리
+			uart3_poll_and_process_lines();
+
+			// 6) 현재 로봇의 상태를 Serial 통신을 통해 PC로 전송
 			if (strawberry_robot.current_robot_mode == 1) // 로봇의 현재 상태가 Control Enable인 경우
 			{
 				printf("[%8.3f, %8.3f, %8d, %8d, %8d, %8.3f, %8d, %8d, %8.3f, %8d, %8d, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f]\r\n",

@@ -149,11 +149,15 @@ bool SerialReceiver::sendTxFrame(const std::array<double,4>& target,
 {
     if (!m_port.isOpen()) return false;
     const QByteArray frame = buildTxFrame(target, posx, posy, posz);
-    const qint64 want = frame.size();
-    const qint64 n = m_port.write(frame);
-    if (n != want) return false;
-    // 선택: 동기 flush가 필요하면 wait
-    m_port.waitForBytesWritten(50);
+
+    qint64 sent = 0;
+    while (sent < frame.size()) {
+        const qint64 n = m_port.write(frame.constData() + sent, frame.size() - sent);
+        if (n < 0) return false;                  // write 에러
+        sent += n;
+        if (!m_port.waitForBytesWritten(50))      // 타임아웃 시 실패 처리
+            return false;
+    }
     return true;
 }
 

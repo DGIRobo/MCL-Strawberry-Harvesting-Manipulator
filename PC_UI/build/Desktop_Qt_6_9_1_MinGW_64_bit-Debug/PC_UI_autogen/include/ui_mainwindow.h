@@ -300,6 +300,10 @@ public:
         targetXpos = new QDoubleSpinBox(centralwidget);
         targetXpos->setObjectName("targetXpos");
         targetXpos->setGeometry(QRect(120, 270, 81, 22));
+        targetXpos->setDecimals(3);
+        targetXpos->setMaximum(0.900000000000000);
+        targetXpos->setSingleStep(0.001000000000000);
+        targetXpos->setValue(0.460000000000000);
         label_20 = new QLabel(centralwidget);
         label_20->setObjectName("label_20");
         label_20->setGeometry(QRect(30, 270, 81, 21));
@@ -315,9 +319,16 @@ public:
         targetYpos = new QDoubleSpinBox(centralwidget);
         targetYpos->setObjectName("targetYpos");
         targetYpos->setGeometry(QRect(120, 300, 81, 22));
+        targetYpos->setDecimals(3);
+        targetYpos->setMaximum(0.900000000000000);
+        targetYpos->setSingleStep(0.001000000000000);
         targetZpos = new QDoubleSpinBox(centralwidget);
         targetZpos->setObjectName("targetZpos");
         targetZpos->setGeometry(QRect(120, 330, 81, 22));
+        targetZpos->setDecimals(3);
+        targetZpos->setMaximum(0.900000000000000);
+        targetZpos->setSingleStep(0.001000000000000);
+        targetZpos->setValue(0.176000000000000);
         label_23 = new QLabel(centralwidget);
         label_23->setObjectName("label_23");
         label_23->setGeometry(QRect(29, 370, 171, 20));
@@ -402,6 +413,7 @@ public:
         yposPctrlGain->setObjectName("yposPctrlGain");
         yposPctrlGain->setGeometry(QRect(120, 590, 81, 22));
         yposPctrlGain->setMaximum(1000.000000000000000);
+        yposPctrlGain->setSingleStep(0.010000000000000);
         yposPctrlGain->setValue(180.000000000000000);
         yposWindupGain = new QDoubleSpinBox(centralwidget);
         yposWindupGain->setObjectName("yposWindupGain");
@@ -485,6 +497,9 @@ public:
         TaskTime = new QDoubleSpinBox(centralwidget);
         TaskTime->setObjectName("TaskTime");
         TaskTime->setGeometry(QRect(120, 240, 81, 22));
+        TaskTime->setMaximum(10.000000000000000);
+        TaskTime->setSingleStep(0.010000000000000);
+        TaskTime->setValue(1.000000000000000);
         MainWindow->setCentralWidget(centralwidget);
         statusbar = new QStatusBar(MainWindow);
         statusbar->setObjectName("statusbar");
