@@ -11,3 +11,4 @@
 ../Core/Src/stm32h7xx_it.c:225:6:USART3_IRQHandler	8	static
 ../Core/Src/stm32h7xx_it.c:239:6:EXTI15_10_IRQHandler	8	static
 ../Core/Src/stm32h7xx_it.c:252:6:TIM7_IRQHandler	8	static
+../Core/Src/stm32h7xx_it.c:266:6:DMAMUX1_OVR_IRQHandler	4	static

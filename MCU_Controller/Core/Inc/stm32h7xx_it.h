@@ -59,6 +59,7 @@ void FDCAN1_IT1_IRQHandler(void);
 void USART3_IRQHandler(void);
 void EXTI15_10_IRQHandler(void);
 void TIM7_IRQHandler(void);
+void DMAMUX1_OVR_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 
 /* USER CODE END EFP */

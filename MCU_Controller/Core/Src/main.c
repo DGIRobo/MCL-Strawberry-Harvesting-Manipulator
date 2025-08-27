@@ -29,6 +29,7 @@
 #include "task.h"		// Real Time task 세팅을 위해 사용
 #include <string.h>
 #include <stdlib.h>   // strtof
+#include <errno.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -346,49 +347,96 @@ void DataLoggingTask(void *argument);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 // Console Display Functions ----------------------------------------------------
-// 원형 DMA, 모든 DMA IRQ/IDLE IRQ 끄기
-static void uart3_rx_circ_start(void){
-  HAL_UART_Receive_DMA(&huart3, uart3_rx_dma, UART3_RX_DMA_SIZE);
-  __HAL_DMA_DISABLE_IT(huart3.hdmarx, DMA_IT_HT | DMA_IT_TC); // DMA RX 인터럽트 끔
-  __HAL_UART_DISABLE_IT(&huart3, UART_IT_IDLE);               // UART IDLE 끔
+// 링버퍼에 len 바이트 밀어넣기 (꽉 차면 오래된 것부터 드롭)
+static void uart3_rb_push_bytes(const uint8_t *src, uint16_t len)
+{
+  if (len == 0) return;
+
+  uint16_t w = uart3_widx;
+  uint16_t r = uart3_ridx;
+
+  // 남은 공간 계산 (1바이트 비워두는 구조)
+  uint16_t free = (r > w) ? (r - w - 1) : (UART3_RBUF_SIZE - (w - r) - 1);
+  if (len > free) {
+    uint16_t drop = len - free;
+    uart3_ridx = (uart3_ridx + drop) & (UART3_RBUF_SIZE - 1);
+  }
+
+  // 연속 구간으로 두 번에 나눠 복사
+  uint16_t to_end = UART3_RBUF_SIZE - w;
+  uint16_t first  = (len < to_end) ? len : to_end;
+  memcpy(&uart3_rbuf[w], src, first);
+  if (len > first) memcpy(&uart3_rbuf[0], src + first, len - first);
+
+  uart3_widx = (w + len) & (UART3_RBUF_SIZE - 1);
 }
 
-static uint16_t uart3_rx_dma_pos = 0; // 마지막 읽은 위치
+// NORMAL 모드 + IDLE 이벤트 기반 재무장 (레지스터 직접접근 X)
+static void uart3_rx_start_normal(void)
+{
+  // 1) RX DMA가 CIRC로 잡혀 있다면 HAL로 NORMAL로 재초기화
+  if (huart3.hdmarx) {
+    if (huart3.hdmarx->Init.Mode != DMA_NORMAL) {
+      // 안전하게 모두 중단
+      HAL_UART_AbortReceive(&huart3);
+      HAL_DMA_Abort(huart3.hdmarx);
 
-// 주기적으로(예: 1~10ms) 새로 들어온 바이트를 링버퍼로 복사
-static void uart3_rx_poll_from_dma(void){
-  uint16_t pos = UART3_RX_DMA_SIZE - __HAL_DMA_GET_COUNTER(huart3.hdmarx);
-  uint16_t len = (pos >= uart3_rx_dma_pos) ? (pos - uart3_rx_dma_pos)
-                                           : (UART3_RX_DMA_SIZE - uart3_rx_dma_pos + pos);
+      // DMA를 NORMAL로 재설정
+      HAL_DMA_DeInit(huart3.hdmarx);
+      huart3.hdmarx->Init.Mode = DMA_NORMAL;
+      if (HAL_DMA_Init(huart3.hdmarx) != HAL_OK) {
+        sta = 3;  // MCU Init 에러 코드 재사용
+        Error_Handler();
+      }
+      // __HAL_LINKDMA(&huart3, hdmarx, *huart3.hdmarx); // 보통 재링크 불필요
+    }
+    // Half-Transfer IRQ는 사용 안 함
+    __HAL_DMA_DISABLE_IT(huart3.hdmarx, DMA_IT_HT);
+  }
 
-  // wrap 고려해 두 번에 나눠 복사
-  uint16_t first = fmin(len, UART3_RX_DMA_SIZE - uart3_rx_dma_pos);
-  for (uint16_t i = 0; i < first; ++i) {
-    uint16_t next = (uart3_widx + 1) & (UART3_RBUF_SIZE - 1);
-    if (next == uart3_ridx) uart3_ridx = (uart3_ridx + 1) & (UART3_RBUF_SIZE - 1);
-    uart3_rbuf[uart3_widx] = uart3_rx_dma[uart3_rx_dma_pos + i];
-    uart3_widx = next;
+  // 2) IDLE 플래그 정리하고 ToIdle-DMA 재무장
+  __HAL_UART_CLEAR_IDLEFLAG(&huart3);
+  if (HAL_UARTEx_ReceiveToIdle_DMA(&huart3, uart3_rx_dma, UART3_RX_DMA_SIZE) != HAL_OK) {
+    sta = 3;
+    Error_Handler();
   }
-  uint16_t second = len - first;
-  for (uint16_t i = 0; i < second; ++i) {
-    uint16_t next = (uart3_widx + 1) & (UART3_RBUF_SIZE - 1);
-    if (next == uart3_ridx) uart3_ridx = (uart3_ridx + 1) & (UART3_RBUF_SIZE - 1);
-    uart3_rbuf[uart3_widx] = uart3_rx_dma[i];
-    uart3_widx = next;
-  }
-  uart3_rx_dma_pos = pos;
 }
 
+// ToIdle-DMA가 IDLE 또는 버퍼가 다 찼을 때 호출됨 (Size: 수신 바이트 수)
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+  if (huart->Instance != USART3) return;
+
+  if (Size) {
+    uart3_rb_push_bytes(uart3_rx_dma, Size);
+  }
+  // 다음 수신 다시 무장
+  uart3_rx_start_normal();
+}
+
+// 혹시 HAL이 TC로만 불러줄 수도 있으므로 안전망 콜백도 구현
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance != USART3) return;
+
+  uart3_rb_push_bytes(uart3_rx_dma, UART3_RX_DMA_SIZE);
+  uart3_rx_start_normal();
+}
+
+// 에러 시 플래그 정리하고 즉시 재무장
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance != USART3) return;
 
-  // 필요시 에러 플래그 클리어
+  HAL_UART_AbortReceive(huart);
+
   __HAL_UART_CLEAR_OREFLAG(huart);
   __HAL_UART_CLEAR_FEFLAG(huart);
   __HAL_UART_CLEAR_NEFLAG(huart);
+  __HAL_UART_CLEAR_PEFLAG(huart);
+  __HAL_UART_CLEAR_IDLEFLAG(huart);
 
-  uart3_rx_circ_start();             // ★ 원형 DMA 재무장만 수행
+  uart3_rx_start_normal();
 }
 
 static void uart3_kick_tx_dma(void)
@@ -710,7 +758,7 @@ void motor_encoder_read(Motor *m, float32_t cutoff)
 	while (xQueueReceive(m->canRxQueue, buf, 0) == pdPASS) { memcpy(last, buf, 8); got = 1; }
 	if (got)
 	{
-		// CAN 메시지가 이미 수신되었거나 1ms 이내 수신 성공 시
+		// CAN 메시지가 이미 수신되었을 시
 		unsigned int p_int = ((last[1]<<8)|last[2]);
 		float32_t pulses = (float32_t) uint_to_float32_t(p_int, P_MIN, P_MAX, 16);
 		//printf("motor pulses: %f", pulses);
@@ -718,10 +766,10 @@ void motor_encoder_read(Motor *m, float32_t cutoff)
 	}
 	else
 	{
-		sta = 2;
-		Error_Handler();
+//		sta = 2;
+//		Error_Handler();
 		// 수신 실패 시에도 이전 pos 값을 그대로 유지
-		//m->pos = m->pos_old;
+		m->pos = m->pos_old;
 		//printf("Warning: can not read encoder position of ID %d", m->id);
 	}
 	// 어쨌든 vel, acc 업데이트는 수행
@@ -1072,23 +1120,45 @@ static inline void trim_spaces(char *s) {
 // 한 줄을 파싱: [ ... 19개 ... ] 에서 float들 추출
 static int parse_pc_line_to_floats(char *line, float vals[], int maxn)
 {
-  // 대괄호 범위 찾기
   char *L = strchr(line, '[');
   char *R = strrchr(line, ']');
   if (!L || !R || R <= L) return 0;
 
-  *R = '\0';   // ']' 대신 문자열 끝
-  ++L;         // '[' 다음부터
+  *R = '\0'; ++L;
 
   int count = 0;
-  char *save = NULL;
-  char *tok = strtok_r(L, ",", &save);
-  while (tok && count < maxn) {
-    trim_spaces(tok);
-    vals[count++] = strtof(tok, NULL);
-    tok = strtok_r(NULL, ",", &save);
+  char *p = L;
+
+  while (*p && count < maxn) {
+    // 구분자(,) 전까지 토큰 범위 찾기
+    char *q = p;
+    while (*q && *q != ',') ++q;
+
+    // 토큰 문자열 [p, q)
+    // 앞뒤 공백 제거
+    while (*p == ' ' || *p == '\t') ++p;
+    char *e = q;
+    while (e > p && (e[-1] == ' ' || e[-1] == '\t')) --e;
+
+    if (e > p) { // 빈 토큰이 아니면
+      errno = 0;
+      char tmp = *e; *e = '\0';
+      char *endptr = NULL;
+      float v = strtof(p, endptr ? &endptr : &e); // newlib-nano 대응
+      if (endptr) {
+        while (*endptr == ' ' || *endptr == '\t') ++endptr;
+        if (errno != 0 || *endptr != '\0') return 0; // 유효 숫자 아님 → 실패
+      }
+      vals[count++] = v;
+      *e = tmp;
+    }
+    // 끝 처리
+    if (*q == '\0') break;
+    p = q + 1;
   }
-  return count;
+
+  // 꼭 19개여야 성공
+  return (count == PC_MSG_FIELDS) ? count : 0;
 }
 
 // 파싱 결과를 시스템 파라미터에 반영 (요청대로 DataLoggingTask에서 직접 반영)
@@ -1108,9 +1178,9 @@ static void apply_pc_floats(const float v[PC_MSG_FIELDS])
 	//  gTaskTime_s = v[T];
 
 	// 2) 타겟 위치 (사용자 전역/객체)
-	//  target_posXYZ.pData[0] = v[tx];
-	//  target_posXYZ.pData[1] = v[ty];
-	//  target_posXYZ.pData[2] = v[tz];
+	target_posXYZ.pData[0] = v[tx];
+	target_posXYZ.pData[1] = v[ty];
+	target_posXYZ.pData[2] = v[tz];
 
 	// 3) XYZ 게인/컷오프/안티윈드업
 	taskspace_p_gain[0]     	   = v[xKp];
@@ -1307,7 +1377,7 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   // UART3 1바이트 인터럽트 수신 시작
-  uart3_rx_circ_start();
+  uart3_rx_start_normal();
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -1563,6 +1633,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Stream1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 8, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
+  /* DMAMUX1_OVR_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMAMUX1_OVR_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMAMUX1_OVR_IRQn);
 
 }
 
@@ -1649,7 +1722,10 @@ void ControlTask(void *argument)
 		// 5) LED1 토글: 주기가 잘 유지되는지 육안으로 확인
 		HAL_GPIO_TogglePin(GPIOB, LED1_PIN);
 
-		// 6) 현재 로봇이 Enable 상태인지, Disable 상태인지 판단
+		// 6) 여기서 PC로부터 들어온 task space PID Gain값과 Target Trajectory를 반영
+		uart3_poll_and_process_lines();
+
+		// 7) 현재 로봇이 Enable 상태인지, Disable 상태인지 판단
 		if (strawberry_robot.current_robot_mode == 1) // Robot이 Enable 상태일 때
 		{
 			if (strawberry_robot.desired_robot_mode == 0) // Robot의 Disable 명령이 들어오면
@@ -1682,18 +1758,15 @@ void ControlTask(void *argument)
 				}
 				// 1. 로봇의 상태 업데이트
 				robot_state_update(&strawberry_robot);
-				// 2. 여기서 PC로부터 들어온 task space PID Gain값과 Target Trajectory를 반영
-				uart3_rx_poll_from_dma();
-				uart3_poll_and_process_lines();
 				robot_pos_pid_gain_setting(&strawberry_robot, taskspace_p_gain, taskspace_d_gain, taskspace_i_gain, taskspace_windup_gain, taskspace_pid_cutoff);
-				// 3. 로봇의 Control Input 계산
-				target_posXYZ.pData[0] = homing_posXYZ.pData[0] + 0.2f * sinf(2.0f * pi * 5.0f * ((float32_t)ctrl_time_ms) / 1000.0f);
+				// 2. 로봇의 Control Input 계산
+				//target_posXYZ.pData[0] = homing_posXYZ.pData[0] + 0.2f * sinf(2.0f * pi * 5.0f * ((float32_t)ctrl_time_ms) / 1000.0f);
 				robot_pos_pid(&strawberry_robot, target_posXYZ);
 				for (int i = 0; i < NUM_MOTORS; ++i)
 				{
-					// 4. 로봇에서 계산한 Control Input을 모터 레벨로 내리기
+					// 3. 로봇에서 계산한 Control Input을 모터 레벨로 내리기
 					motor_feedforward_torque(&strawberry_robot.motors[i], strawberry_robot.tau_bi.pData[i] * strawberry_robot.axis_configuration[i]);
-					// 5. CAN 통신 레지스터에 여유 슬롯이 있으면 현재 모터 제어값을 전송
+					// 4. CAN 통신 레지스터에 여유 슬롯이 있으면 현재 모터 제어값을 전송
 					if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) > 0) {
 						MIT_Mode(strawberry_robot.motors[i].id, strawberry_robot.motors[i].control_input);
 					}
