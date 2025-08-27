@@ -594,6 +594,9 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
     <property name="decimals">
      <number>3</number>
     </property>
+    <property name="minimum">
+     <double>-0.900000000000000</double>
+    </property>
     <property name="maximum">
      <double>0.900000000000000</double>
     </property>
@@ -664,6 +667,9 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
     <property name="decimals">
      <number>3</number>
     </property>
+    <property name="minimum">
+     <double>-0.900000000000000</double>
+    </property>
     <property name="maximum">
      <double>0.900000000000000</double>
     </property>
@@ -682,6 +688,9 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
     </property>
     <property name="decimals">
      <number>3</number>
+    </property>
+    <property name="minimum">
+     <double>-0.900000000000000</double>
     </property>
     <property name="maximum">
      <double>0.900000000000000</double>
@@ -838,6 +847,9 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
       <width>81</width>
       <height>22</height>
      </rect>
+    </property>
+    <property name="minimum">
+     <double>0.010000000000000</double>
     </property>
     <property name="maximum">
      <double>200.000000000000000</double>
@@ -1024,6 +1036,9 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
       <height>22</height>
      </rect>
     </property>
+    <property name="minimum">
+     <double>0.010000000000000</double>
+    </property>
     <property name="maximum">
      <double>200.000000000000000</double>
     </property>
@@ -1206,6 +1221,9 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
       <height>22</height>
      </rect>
     </property>
+    <property name="minimum">
+     <double>0.010000000000000</double>
+    </property>
     <property name="maximum">
      <double>200.000000000000000</double>
     </property>
@@ -1291,6 +1309,9 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
       <width>81</width>
       <height>22</height>
      </rect>
+    </property>
+    <property name="minimum">
+     <double>0.010000000000000</double>
     </property>
     <property name="maximum">
      <double>10.000000000000000</double>
