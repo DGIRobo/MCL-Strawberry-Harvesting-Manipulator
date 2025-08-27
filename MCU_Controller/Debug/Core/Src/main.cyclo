@@ -36,6 +36,6 @@
 ../Core/Src/main.c:1447:13:MX_GPIO_Init	1
 ../Core/Src/main.c:1504:6:ControlTask	17
 ../Core/Src/main.c:1678:6:DataLoggingTask	2
-../Core/Src/main.c:1735:6:MPU_Config	1
-../Core/Src/main.c:1770:6:HAL_TIM_PeriodElapsedCallback	2
-../Core/Src/main.c:1788:6:Error_Handler	11
+../Core/Src/main.c:1731:6:MPU_Config	1
+../Core/Src/main.c:1766:6:HAL_TIM_PeriodElapsedCallback	2
+../Core/Src/main.c:1784:6:Error_Handler	11

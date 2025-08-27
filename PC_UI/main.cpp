@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
     // 3) 송신은 별도 타이머 주기
     auto txTimer = new QTimer(&w);
     txTimer->setTimerType(Qt::PreciseTimer);
-    txTimer->setInterval(5); // 원하는 송신 주기(ms)로 조절: 20~50 권장
+    txTimer->setInterval(50); // 원하는 송신 주기(ms)로 조절: 20~50 권장
     QObject::connect(txTimer, &QTimer::timeout, &w, [serial, &w]{
         if (!serial->sendTxFrameFromGlobals()) {
             qWarning("TX failed");

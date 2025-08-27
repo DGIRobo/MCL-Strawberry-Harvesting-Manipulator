@@ -12,6 +12,12 @@ SerialReceiver::SerialReceiver(const QString& portName, int baud, QObject* paren
     m_port.setParity(QSerialPort::NoParity);
     m_port.setStopBits(QSerialPort::OneStop);
     m_port.setFlowControl(QSerialPort::NoFlowControl);
+
+    m_port.setReadBufferSize(0);        // 고속에서도 드롭 방지
+    // 일부 어댑터에서 DTR/RTS가 열리면 꼬이는 경우가 있어 확실히 꺼두기
+    m_port.setDataTerminalReady(false);
+    m_port.setRequestToSend(false);
+
     connect(&m_port, &QSerialPort::readyRead, this, &SerialReceiver::onReadyRead);
 }
 
@@ -27,29 +33,36 @@ void SerialReceiver::onReadyRead()
 {
     m_buf += m_port.readAll();
 
-    // '[' ... ']' 프레임을 연속 추출
     for (;;) {
+        // 1) 프레임 시작 찾기
         int start = m_buf.indexOf('[');
-        if (start < 0) { m_buf.clear(); break; }   // 시작 전 쓰레기 버림
-        if (start > 0) m_buf.remove(0, start);     // '[' 앞은 버림
+        if (start < 0) {
+            // 시작 전 쓰레기는 남겨두되, 비정상 누적 방지
+            if (m_buf.size() > 65536)
+                m_buf = m_buf.right(32768);
+            break;
+        }
+        if (start > 0) m_buf.remove(0, start); // '[' 앞은 버림 → 이제 '['는 0번지
 
+        // 2) 프레임 끝 찾기
         int end = m_buf.indexOf(']');
-        if (end < 0) break;                        // 아직 끝 안 옴 → 다음 readyRead 때 재시도
-
-        int frameEnd = end + 1; // ']' 바로 뒤
-        // CRLF 확인(프레임 경계 유효성)
-        bool hasCRLF = (frameEnd + 1 < m_buf.size()
-                        && m_buf[frameEnd] == '\r'
-                        && m_buf[frameEnd+1] == '\n');
-        if (!hasCRLF) {
-            // ']'는 봤지만 CRLF가 아직 안 왔거나 깨진 경우 → 다음 readyRead까지 대기
-            // (만약 오래도록 CRLF가 안 오면, 버퍼를 버리고 재동기화해도 됨)
+        if (end < 0) {
+            // 아직 끝이 안 왔음 → 다음 readyRead까지 대기
+            if (m_buf.size() > 65536)
+                m_buf = m_buf.right(32768);
             break;
         }
 
-        const QByteArray payload = m_buf.mid(1, end - 1); // '['와 ']' 제외
-        m_buf.remove(0, frameEnd + 2); // ']' + "\r\n" 제거
+        // 3) payload 추출: '['와 ']' 제외
+        const QByteArray payload = m_buf.mid(1, end - 1);
 
+        // 4) 소비할 길이 계산: ']' + optional '\r' + optional '\n'
+        int consume = end + 1;
+        if (consume < m_buf.size() && m_buf[consume] == '\r') ++consume;
+        if (consume < m_buf.size() && m_buf[consume] == '\n') ++consume;
+        m_buf.remove(0, consume);
+
+        // 5) 파싱 시도
         parseFrame(payload);
     }
 }
@@ -70,20 +83,18 @@ void SerialReceiver::parseFrame(const QByteArray& payload)
     // 공백 제거
     for (QString& t : tok) t = t.trimmed();
 
-    // 프레임 형식 유효성: 정확히 30개 (3 + 3*3 + 6*3)
-    static constexpr int EXPECTED_TOKENS = 30;
+    // 프레임 형식 유효성: 정확히 30개 (2 + 2*3 + 4*3)
+    static constexpr int EXPECTED_TOKENS = 20;
     if (tok.size() != EXPECTED_TOKENS) return;
 
     Telemetry tmp; int i = 0;
 
     // 숫자 변환 성공 여부만 검사(형식 유효성의 일부)
     if (!toD(tok[i++], tmp.t))  return;
-    if (!toD(tok[i++], tmp.dt)) return;
     if (!toI(tok[i++], tmp.robot_mode)) return;
 
     // 모터 3 * (id, mode, control)
     for (int m = 0; m < 3; ++m) {
-        if (!toI(tok[i++], tmp.motors[m].id))      return;
         if (!toI(tok[i++], tmp.motors[m].mode))    return;
         if (!toD(tok[i++], tmp.motors[m].control)) return;
     }
@@ -95,16 +106,13 @@ void SerialReceiver::parseFrame(const QByteArray& payload)
     if (!fill3(tmp.q_bi))       return;
     if (!fill3(tmp.pos_ref))    return;
     if (!fill3(tmp.pos))        return;
-    if (!fill3(tmp.vel))        return;
     if (!fill3(tmp.pos_I))      return;
-    if (!fill3(tmp.pos_pid))    return;
 
     // 여기까지 통과하면 "형식상" 정상 프레임 → 전역에 반영 (락으로 보호)
     gTelemetryLock.lockForWrite();
 
     // 수정: 수신 필드만 개별 복사
     gTelemetry.t          = tmp.t;
-    gTelemetry.dt         = tmp.dt;
     gTelemetry.robot_mode = tmp.robot_mode;
 
     for (int m = 0; m < 3; ++m) {
@@ -114,9 +122,7 @@ void SerialReceiver::parseFrame(const QByteArray& payload)
     gTelemetry.q_bi    = tmp.q_bi;
     gTelemetry.pos_ref = tmp.pos_ref;
     gTelemetry.pos     = tmp.pos;
-    gTelemetry.vel     = tmp.vel;
     gTelemetry.pos_I   = tmp.pos_I;
-    gTelemetry.pos_pid = tmp.pos_pid;
     // (Tx 필드: target_position / posx/y/z_pid_gain 은 건드리지 않음)
 
     gTelemetryLock.unlock();

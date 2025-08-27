@@ -1682,12 +1682,12 @@ void DataLoggingTask(void *argument)
 	TickType_t logging_tick_reference = xTaskGetTickCount();
 
 	// 2) 2 ms 를 틱 단위로 환산하여 주기 변수에 저장
-	const TickType_t logging_tick_period = pdMS_TO_TICKS(2);  // 2 ms
+	const TickType_t logging_tick_period = pdMS_TO_TICKS(10);  // 10 ms
 
 	  /* Infinite loop */
 		for (;;)
 		{
-			// 3) 2 ms 주기로 블록 → 이 시점이 매 2 ms마다 실행됨
+			// 3) 2 ms 주기로 블록 → 이 시점이 매 10 ms마다 실행됨
 			vTaskDelayUntil(&logging_tick_reference, logging_tick_period);
 
 			// 4) 실제 경과 시간(틱)으로부터 ms 환산하여 누적
@@ -1700,31 +1700,27 @@ void DataLoggingTask(void *argument)
 			// 6) 현재 로봇의 상태를 Serial 통신을 통해 PC로 전송
 			if (strawberry_robot.current_robot_mode == 1) // 로봇의 현재 상태가 Control Enable인 경우
 			{
-				printf("[%8.3f, %8.3f, %8d, %8d, %8d, %8.3f, %8d, %8d, %8.3f, %8d, %8d, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f]\r\n",
-						(float32_t) ctrl_time_ms/1000, (float32_t) (ctrl_time_ms - ctrl_time_ms_old)/1000, strawberry_robot.current_robot_mode,
-						strawberry_robot.motors[0].id, strawberry_robot.motors[0].current_motor_mode, strawberry_robot.motors[0].control_input,
-						strawberry_robot.motors[1].id, strawberry_robot.motors[1].current_motor_mode, strawberry_robot.motors[1].control_input,
-						strawberry_robot.motors[2].id, strawberry_robot.motors[2].current_motor_mode, strawberry_robot.motors[2].control_input,
+				printf("[%.3f, %d, %d, %.3f, %d, %.3f, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f]\r\n",
+						(float32_t) ctrl_time_ms/1000, strawberry_robot.current_robot_mode,
+						strawberry_robot.motors[0].current_motor_mode, strawberry_robot.motors[0].control_input,
+						strawberry_robot.motors[1].current_motor_mode, strawberry_robot.motors[1].control_input,
+						strawberry_robot.motors[2].current_motor_mode, strawberry_robot.motors[2].control_input,
 						strawberry_robot.q_bi.pData[0], strawberry_robot.q_bi.pData[1], strawberry_robot.q_bi.pData[2],
 						strawberry_robot.posXYZ_ref.pData[0], strawberry_robot.posXYZ_ref.pData[1], strawberry_robot.posXYZ_ref.pData[2],
 						strawberry_robot.posXYZ.pData[0], strawberry_robot.posXYZ.pData[1], strawberry_robot.posXYZ.pData[2],
-						strawberry_robot.velXYZ.pData[0], strawberry_robot.velXYZ.pData[1], strawberry_robot.velXYZ.pData[2],
-						strawberry_robot.pos_I_term.pData[0], strawberry_robot.pos_I_term.pData[1], strawberry_robot.pos_I_term.pData[2],
-						strawberry_robot.pos_pid_output.pData[0], strawberry_robot.pos_pid_output.pData[1], strawberry_robot.pos_pid_output.pData[2]);
+						strawberry_robot.pos_I_term.pData[0], strawberry_robot.pos_I_term.pData[1], strawberry_robot.pos_I_term.pData[2]);
 			}
 			else // 로봇의 현재 상태가 Control Disable인 경우
 			{
-				printf("[%8.3f, %8.3f, %8d, %8d, %8d, %8.3f, %8d, %8d, %8.3f, %8d, %8d, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f, %8.3f]\r\n",
-				(float32_t) ctrl_time_ms/1000, (float32_t) (ctrl_time_ms - ctrl_time_ms_old)/1000, strawberry_robot.current_robot_mode,
-				strawberry_robot.motors[0].id, strawberry_robot.motors[0].current_motor_mode, 0.0f,
-				strawberry_robot.motors[1].id, strawberry_robot.motors[1].current_motor_mode, 0.0f,
-				strawberry_robot.motors[2].id, strawberry_robot.motors[2].current_motor_mode, 0.0f,
-				0.0f, 0.0f, 0.0f,
-				0.0f, 0.0f, 0.0f,
-				0.0f, 0.0f, 0.0f,
-				0.0f, 0.0f, 0.0f,
-				0.0f, 0.0f, 0.0f,
-				0.0f, 0.0f, 0.0f);
+				printf("[%.3f, %d, %d, %.3f, %d, %.3f, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f]\r\n",
+						(float32_t) ctrl_time_ms/1000, strawberry_robot.current_robot_mode,
+						strawberry_robot.motors[0].current_motor_mode, strawberry_robot.motors[0].control_input,
+						strawberry_robot.motors[1].current_motor_mode, strawberry_robot.motors[1].control_input,
+						strawberry_robot.motors[2].current_motor_mode, strawberry_robot.motors[2].control_input,
+						strawberry_robot.q_bi.pData[0], strawberry_robot.q_bi.pData[1], strawberry_robot.q_bi.pData[2],
+						strawberry_robot.posXYZ_ref.pData[0], strawberry_robot.posXYZ_ref.pData[1], strawberry_robot.posXYZ_ref.pData[2],
+						strawberry_robot.posXYZ.pData[0], strawberry_robot.posXYZ.pData[1], strawberry_robot.posXYZ.pData[2],
+						strawberry_robot.pos_I_term.pData[0], strawberry_robot.pos_I_term.pData[1], strawberry_robot.pos_I_term.pData[2]);
 			}
 		}
   /* USER CODE END DataLoggingTask */
