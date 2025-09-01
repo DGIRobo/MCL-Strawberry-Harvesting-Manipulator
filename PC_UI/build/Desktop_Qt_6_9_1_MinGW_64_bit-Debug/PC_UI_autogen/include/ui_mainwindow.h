@@ -301,6 +301,7 @@ public:
         targetXpos->setObjectName("targetXpos");
         targetXpos->setGeometry(QRect(120, 270, 81, 22));
         targetXpos->setDecimals(3);
+        targetXpos->setMinimum(-0.900000000000000);
         targetXpos->setMaximum(0.900000000000000);
         targetXpos->setSingleStep(0.001000000000000);
         targetXpos->setValue(0.460000000000000);
@@ -320,12 +321,14 @@ public:
         targetYpos->setObjectName("targetYpos");
         targetYpos->setGeometry(QRect(120, 300, 81, 22));
         targetYpos->setDecimals(3);
+        targetYpos->setMinimum(-0.900000000000000);
         targetYpos->setMaximum(0.900000000000000);
         targetYpos->setSingleStep(0.001000000000000);
         targetZpos = new QDoubleSpinBox(centralwidget);
         targetZpos->setObjectName("targetZpos");
         targetZpos->setGeometry(QRect(120, 330, 81, 22));
         targetZpos->setDecimals(3);
+        targetZpos->setMinimum(-0.900000000000000);
         targetZpos->setMaximum(0.900000000000000);
         targetZpos->setSingleStep(0.001000000000000);
         targetZpos->setValue(0.176000000000000);
@@ -370,6 +373,7 @@ public:
         xposCutoffFreq = new QDoubleSpinBox(centralwidget);
         xposCutoffFreq->setObjectName("xposCutoffFreq");
         xposCutoffFreq->setGeometry(QRect(120, 490, 81, 22));
+        xposCutoffFreq->setMinimum(0.010000000000000);
         xposCutoffFreq->setMaximum(200.000000000000000);
         xposCutoffFreq->setValue(150.000000000000000);
         xposWindupGain = new QDoubleSpinBox(centralwidget);
@@ -423,6 +427,7 @@ public:
         yposCutoffFreq = new QDoubleSpinBox(centralwidget);
         yposCutoffFreq->setObjectName("yposCutoffFreq");
         yposCutoffFreq->setGeometry(QRect(120, 680, 81, 22));
+        yposCutoffFreq->setMinimum(0.010000000000000);
         yposCutoffFreq->setMaximum(200.000000000000000);
         yposCutoffFreq->setValue(150.000000000000000);
         label_33 = new QLabel(centralwidget);
@@ -473,6 +478,7 @@ public:
         zposCutoffFreq = new QDoubleSpinBox(centralwidget);
         zposCutoffFreq->setObjectName("zposCutoffFreq");
         zposCutoffFreq->setGeometry(QRect(120, 870, 81, 22));
+        zposCutoffFreq->setMinimum(0.010000000000000);
         zposCutoffFreq->setMaximum(200.000000000000000);
         zposCutoffFreq->setValue(150.000000000000000);
         label_40 = new QLabel(centralwidget);
@@ -497,6 +503,7 @@ public:
         TaskTime = new QDoubleSpinBox(centralwidget);
         TaskTime->setObjectName("TaskTime");
         TaskTime->setGeometry(QRect(120, 240, 81, 22));
+        TaskTime->setMinimum(0.010000000000000);
         TaskTime->setMaximum(10.000000000000000);
         TaskTime->setSingleStep(0.010000000000000);
         TaskTime->setValue(1.000000000000000);

@@ -88,21 +88,21 @@ void MainWindow::updateWindow()
     else { RobotLedOff(); }
 
     // 4) 플롯 갱신: t, y1, [y2] 순으로 호출
-    drawPlot(ui->q1Plot,        data.t, data.q_bi[0]);
-    drawPlot(ui->qmPlot,        data.t, data.q_bi[1]);
-    drawPlot(ui->qbPlot,        data.t, data.q_bi[2]);
+    drawPlot(ui->q1Plot,        data.t, data.q_bi[0], "q_yaw (rad)");
+    drawPlot(ui->qmPlot,        data.t, data.q_bi[1], "q_mono (rad)");
+    drawPlot(ui->qbPlot,        data.t, data.q_bi[2], "q_bi (rad)");
 
-    drawPlot(ui->xposPlot,      data.t, data.pos_ref[0],  data.pos[0]);  // 2곡선(실제, 기준)
-    drawPlot(ui->yposPlot,      data.t, data.pos_ref[1],  data.pos[1]);
-    drawPlot(ui->zposPlot,      data.t, data.pos_ref[2],  data.pos[2]);
+    drawPlot(ui->xposPlot,      data.t, data.pos_ref[0], "Xpos_ref (m)",  data.pos[0], "Xpos (m)");  // 2곡선(실제, 기준)
+    drawPlot(ui->yposPlot,      data.t, data.pos_ref[1], "Ypos_ref (m)",  data.pos[1], "Ypos (m)");
+    drawPlot(ui->zposPlot,      data.t, data.pos_ref[2], "Zpos_ref (m)",  data.pos[2], "Zpos (m)");
 
-    drawPlot(ui->xposIctrlPlot, data.t, data.pos_I[0]);
-    drawPlot(ui->yposIctrlPlot, data.t, data.pos_I[1]);
-    drawPlot(ui->zposIctrlPlot, data.t, data.pos_I[2]);
+    drawPlot(ui->xposIctrlPlot, data.t, data.pos_I[0], "Xpos_Ictrl_out (N)");
+    drawPlot(ui->yposIctrlPlot, data.t, data.pos_I[1], "Ypos_Ictrl_out (N)");
+    drawPlot(ui->zposIctrlPlot, data.t, data.pos_I[2], "Zpos_Ictrl_out (N)");
 
-    drawPlot(ui->q1CurrentPlot, data.t, data.motors[0].control);
-    drawPlot(ui->qmCurrentPlot, data.t, data.motors[1].control);
-    drawPlot(ui->qbCurrentPlot, data.t, data.motors[2].control);
+    drawPlot(ui->q1CurrentPlot, data.t, data.motors[0].control, "Current_yaw (A)");
+    drawPlot(ui->qmCurrentPlot, data.t, data.motors[1].control, "Current_mono (A)");
+    drawPlot(ui->qbCurrentPlot, data.t, data.motors[2].control, "Current_bi (A)");
     // drawPlot() 안에서 rpQueuedReplot과 rescale(true) 처리하므로 여기서 추가 replot 불필요
 }
 
@@ -198,42 +198,65 @@ void MainWindow::createPlot(QCustomPlot *plot)
     plot->setBackground(QColor(25, 35, 45));
     plot->axisRect()->setBackground(QColor(25, 35, 45));
 
-    // (주의) insetLayout()->setInsetAlignment(0, ...)를 쓰려면
-    // inset 0번이 실제로 존재해야 합니다(예: legend를 inset에 추가한 뒤).
-    // 없다면 이 줄은 제거하세요.
-    // plot->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignLeft | Qt::AlignTop);
+    // ── legend 표시 및 스타일
+    plot->legend->setVisible(true);
+    plot->legend->setBrush(QBrush(Qt::NoBrush));
+    plot->legend->setBorderPen(QPen(Qt::white));
+    plot->legend->setTextColor(Qt::white);
 }
 
-void MainWindow::drawPlot(QCustomPlot* plot, double t, double y1, std::optional<double> y2)
+void MainWindow::drawPlot(QCustomPlot* plot,
+                          double t,
+                          double y1,
+                          const QString& y1Name,
+                          std::optional<double> y2,
+                          std::optional<QString> y2Name)
 {
-    // 1) 데이터 추가 (필수: 그래프 0)
+    // ── graph(0): y1
+    if (plot->graph(0)->name() != y1Name)
+        plot->graph(0)->setName(y1Name);
+    plot->graph(0)->setVisible(true);
     plot->graph(0)->addData(t, y1);
 
-    // 2) 두 번째 y가 들어오면 그래프 1 자동 생성/표시
+    // ── graph(1): y2(있을 때만)
     if (y2.has_value()) {
         ensureSecondGraph(plot);
         plot->graph(1)->setVisible(true);
+
+        // y2 이름 지정 (없으면 기본값)
+        const QString g1name = y2Name.has_value() ? *y2Name : QStringLiteral("y2");
+        if (plot->graph(1)->name() != g1name)
+            plot->graph(1)->setName(g1name);
+
         plot->graph(1)->addData(t, *y2);
+
+        if (auto item = plot->legend->itemWithPlottable(plot->graph(1)))
+            item->setVisible(true);
     } else {
-        // 이번 샘플은 y1만 있는 상황 → 그래프 1은 숨겨 두면 rescale에 영향 X
-        if (plot->graphCount() > 1)
+        if (plot->graphCount() > 1) {
             plot->graph(1)->setVisible(false);
+            if (auto item = plot->legend->itemWithPlottable(plot->graph(1)))
+                item->setVisible(false);
+        }
     }
 
-    // 3) x축 창 범위 갱신 (t를 오른쪽 끝으로 고정)
+    // ── legend에서 y1 항목은 항상 보이도록
+    if (auto item0 = plot->legend->itemWithPlottable(plot->graph(0)))
+        item0->setVisible(true);
+
+    // x-range 고정(우측 정렬)
     plot->xAxis->setRange(t, Plot_time_window_POS, Qt::AlignRight);
 
-    // 4) 오래된 데이터 삭제 (창 바깥은 제거)
+    // 오래된 데이터 삭제
     const double cutoff = t - Plot_time_window_POS;
     plot->graph(0)->data()->removeBefore(cutoff);
-    if (plot->graphCount() > 1)
-        plot->graph(1)->data()->removeBefore(cutoff);
+    if (plot->graphCount() > 1) plot->graph(1)->data()->removeBefore(cutoff);
 
-    // 5) y축 자동 스케일 (가시 요소만 기준)
-    plot->yAxis->rescale(true); // onlyVisiblePlottables=true
+    // y축 자동 스케일 (보이는 그래프 기준)
+    plot->yAxis->rescale(true);
 
-    // 6) 그리기
-    plot->replot(QCustomPlot::rpQueuedReplot); // 즉시 그리기 대신 큐잉(부하↓)
+    // 그리기
+    plot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void MainWindow::readUIParams()

@@ -44,7 +44,7 @@ public:
 
     void updateWindow();
     void createPlot(QCustomPlot *plot);
-    void drawPlot(QCustomPlot* plot, double t, double y1, std::optional<double> y2 = std::nullopt);
+    void drawPlot(QCustomPlot* plot, double t, double y1, const QString& y1Name, std::optional<double> y2 = std::nullopt, std::optional<QString> y2Name = std::nullopt);
 
     void readUIParams();
 

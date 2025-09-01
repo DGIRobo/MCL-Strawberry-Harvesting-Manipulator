@@ -30,6 +30,7 @@
 #include <string.h>
 #include <stdlib.h>   // strtof
 #include <errno.h>
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -187,6 +188,13 @@ float32_t homing_posXYZ_buffer[NUM_TASK_DEG] = {
 };
 arm_matrix_instance_f32 homing_posXYZ;
 
+float32_t taskTime = 1.0f;
+float32_t desired_posXYZ[NUM_TASK_DEG] = {
+	0.46,  	// x: m
+	0,  	// y: m
+	0.176   // z: m
+};
+
 float32_t target_posXYZ_buffer[NUM_TASK_DEG] = {
     0.46,  	// x: m
 	0,  	// y: m
@@ -242,6 +250,10 @@ typedef struct {
 	float32_t velXYZ_buffer[NUM_TASK_DEG];
 	arm_matrix_instance_f32 velXYZ_old;
 	float32_t velXYZ_old_buffer[NUM_TASK_DEG];
+	arm_matrix_instance_f32 accXYZ;
+	float32_t accXYZ_buffer[NUM_TASK_DEG];
+	arm_matrix_instance_f32 accXYZ_old;
+	float32_t accXYZ_old_buffer[NUM_TASK_DEG];
 
 	// manipulator model params definition
 	float32_t m1, m2, m3;
@@ -325,6 +337,26 @@ typedef struct {
 } Manipulator;
 
 Manipulator strawberry_robot;
+
+// Quintic Trajectory Structure Definition
+typedef struct {
+	float32_t task_time;
+	float32_t initial_time;
+	float32_t final_time;
+
+	float32_t initial_pos[3];
+	float32_t initial_vel[3];
+	float32_t initial_acc[3];
+	float32_t final_pos[3];
+	float32_t final_vel[3];
+	float32_t final_acc[3];
+
+	float32_t xpos_coefficient[6];
+	float32_t ypos_coefficient[6];
+	float32_t zpos_coefficient[6];
+} Trajectory;
+
+Trajectory quintic_traj;
 
 // Setting for Debug
 int sta = 0;
@@ -510,6 +542,139 @@ int _write(int file, char *p, int len)
     }
   }
   return len;
+}
+
+// 링버퍼에서 1바이트 pop (읽을 게 없으면 0 반환)
+static int uart3_rb_pop(uint8_t *out)
+{
+  if (uart3_ridx == uart3_widx) return 0;  // empty
+  *out = uart3_rbuf[uart3_ridx];
+  uart3_ridx = (uart3_ridx + 1) & (UART3_RBUF_SIZE - 1);
+  return 1;
+}
+
+// 좌우 공백 제거
+static inline void trim_spaces(char *s) {
+  char *p = s;
+  while (*p==' ' || *p=='\t') ++p;
+  if (p!=s) memmove(s, p, strlen(p)+1);
+  for (int i=(int)strlen(s)-1; i>=0 && (s[i]==' ' || s[i]=='\t'); --i) s[i]='\0';
+}
+
+// 한 줄을 파싱: [ ... 19개 ... ] 에서 float들 추출
+static int parse_pc_line_to_floats(char *line, float vals[], int maxn)
+{
+  char *L = strchr(line, '[');
+  char *R = strrchr(line, ']');
+  if (!L || !R || R <= L) return 0;
+
+  *R = '\0'; ++L;
+
+  int count = 0;
+  char *p = L;
+
+  while (*p && count < maxn) {
+    // 구분자(,) 전까지 토큰 범위 찾기
+    char *q = p;
+    while (*q && *q != ',') ++q;
+
+    // 토큰 문자열 [p, q)
+    // 앞뒤 공백 제거
+    while (*p == ' ' || *p == '\t') ++p;
+    char *e = q;
+    while (e > p && (e[-1] == ' ' || e[-1] == '\t')) --e;
+
+    if (e > p) { // 빈 토큰이 아니면
+      errno = 0;
+      char tmp = *e; *e = '\0';
+      char *endptr = NULL;
+      float v = strtof(p, endptr ? &endptr : &e); // newlib-nano 대응
+      if (endptr) {
+        while (*endptr == ' ' || *endptr == '\t') ++endptr;
+        if (errno != 0 || *endptr != '\0') return 0; // 유효 숫자 아님 → 실패
+      }
+      vals[count++] = v;
+      *e = tmp;
+    }
+    // 끝 처리
+    if (*q == '\0') break;
+    p = q + 1;
+  }
+
+  // 꼭 19개여야 성공
+  return (count == PC_MSG_FIELDS) ? count : 0;
+}
+
+// 파싱 결과를 시스템 파라미터에 반영 (요청대로 DataLoggingTask에서 직접 반영)
+static void apply_pc_floats(const float v[PC_MSG_FIELDS])
+{
+	// 인덱스 매핑
+	const int T   = 0;
+	const int tx  = 1,  ty  = 2,  tz  = 3;
+	const int xKp = 4,  xKi = 5,  xKd = 6,  xCf = 7,  xAw = 8;
+	const int yKp = 9,  yKi =10,  yKd =11,  yCf =12,  yAw =13;
+	const int zKp =14,  zKi =15,  zKd =16,  zCf =17,  zAw =18;
+
+	// 간단한 유효성 (원하면 강화)
+	if (v[xCf] <= 0 || v[yCf] <= 0 || v[zCf] <= 0) return;
+
+	// 1) taskTime & 타겟 위치 설정
+	taskTime = v[T];
+	desired_posXYZ[0] = v[tx];
+	desired_posXYZ[1] = v[ty];
+	desired_posXYZ[2] = v[tz];
+
+	// 3) XYZ 게인/컷오프/안티윈드업
+	taskspace_p_gain[0]     	   = v[xKp];
+	taskspace_i_gain[0]     	   = v[xKi];
+	taskspace_d_gain[0]     	   = v[xKd];
+	taskspace_pid_cutoff[0]        = v[xCf];
+	taskspace_windup_gain[0]       = v[xAw];
+
+	taskspace_p_gain[1]     	   = v[yKp];
+	taskspace_i_gain[1]     	   = v[yKi];
+	taskspace_d_gain[1]     	   = v[yKd];
+	taskspace_pid_cutoff[1]        = v[yCf];
+	taskspace_windup_gain[1]       = v[yAw];
+
+	taskspace_p_gain[2]     	   = v[zKp];
+	taskspace_i_gain[2]    	       = v[zKi];
+	taskspace_d_gain[2]     	   = v[zKd];
+	taskspace_pid_cutoff[2]        = v[zCf];
+	taskspace_windup_gain[2]       = v[zAw];
+}
+
+// 링버퍼에서 줄 단위로 꺼내 처리 (CR 무시, LF로 완료)
+static void uart3_poll_and_process_lines(void)
+{
+  uint8_t b;
+  while (uart3_rb_pop(&b)) {
+    char c = (char)b;
+    if (c == '\r') continue;
+
+    if (c == '\n') {
+      if (uart3_line_len > 0) {
+        uart3_line[uart3_line_len] = '\0';
+
+        float vals[PC_MSG_FIELDS];
+        int n = parse_pc_line_to_floats(uart3_line, vals, PC_MSG_FIELDS);
+        if (n >= PC_MSG_FIELDS) {
+          apply_pc_floats(vals);
+        } else {
+          // 형식 불일치 시 무시(필요하면 printf로 경고)
+          // printf("UART parse fail: got %d fields\r\n", n);
+        }
+        uart3_line_len = 0;
+      }
+    } else {
+      if (uart3_line_len < UART3_LINE_MAX - 1) {
+        uart3_line[uart3_line_len++] = c;
+      } else {
+        // 라인 과길이 → 드롭 & 리셋
+        uart3_line_len = 0;
+      }
+    }
+  }
 }
 
 // Safety Button Functions ----------------------------------------------------
@@ -871,11 +1036,15 @@ void robot_forward_kinematics_cal(Manipulator *r)
 		r->posXYZ_ref_old.pData[i] = r->posXYZ_ref.pData[i];
 		r->posXYZ_old.pData[i] = r->posXYZ.pData[i];
 		r->velXYZ_old.pData[i] = r->velXYZ.pData[i];
+		r->accXYZ_old.pData[i] = r->accXYZ.pData[i];
 	}
 	r->posXYZ.pData[0] = c_1 * (r->l2 * c_m + r->l3 * c_b);
 	r->posXYZ.pData[1] = s_1 * (r->l2 * c_m + r->l3 * c_b);
 	r->posXYZ.pData[2] = r->l1 + r->l2 * s_m + r->l3 * s_b;
 	if (arm_mat_mult_f32(&r->jacb_bi, &r->qdot_bi, &r->velXYZ) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
+	for (int i = 0; i < NUM_TASK_DEG; ++i) {
+		r->accXYZ.pData[i] = tustin_derivative(r->velXYZ.pData[i], r->velXYZ_old.pData[i], r->accXYZ_old.pData[i], 70.0f);
+	}
 }
 
 void robot_model_param_cal(Manipulator *r)
@@ -1099,140 +1268,78 @@ void robot_pos_pid(Manipulator *r, arm_matrix_instance_f32 pos_ref)
 
 	if (arm_mat_mult_f32(&r->jacb_bi_trans, &r->pos_pid_output, &r->tau_bi) != ARM_MATH_SUCCESS) { sta=4; Error_Handler(); }
 }
-
-// 링버퍼에서 1바이트 pop (읽을 게 없으면 0 반환)
-static int uart3_rb_pop(uint8_t *out)
+// Trajectory Making Functions ----------------------------------------------------
+void set_trajectory(Manipulator *r, Trajectory *traj, float32_t task_time, float32_t *final_pos)
 {
-  if (uart3_ridx == uart3_widx) return 0;  // empty
-  *out = uart3_rbuf[uart3_ridx];
-  uart3_ridx = (uart3_ridx + 1) & (UART3_RBUF_SIZE - 1);
-  return 1;
+	bool same_pos = (final_pos[0]==traj->final_pos[0] &&
+					 final_pos[1]==traj->final_pos[1] &&
+					 final_pos[2]==traj->final_pos[2]);
+	bool same_T   = fabsf(task_time - traj->task_time) < 1e-6f;
+
+	float32_t now = (float32_t)ctrl_time_ms/1000.f;
+	bool still_running = (now - traj->initial_time) < traj->task_time;
+
+	// 같은 목표/시간이고 아직 진행 중일 때만 스킵
+	if (same_pos && same_T && still_running) return;
+	else
+	{
+		traj->task_time = task_time;
+		traj->initial_time = (float32_t) ctrl_time_ms / 1000.0f;
+		traj->final_time = traj->initial_time + traj->task_time;
+
+		for (int i=0; i<NUM_TASK_DEG; ++i)
+		{
+			traj->initial_pos[i] = r->posXYZ.pData[i];
+			traj->initial_vel[i] = 0.0f;
+			traj->initial_acc[i] = 0.0f;
+
+			traj->final_pos[i] = final_pos[i];
+			traj->final_vel[i] = 0.0f;
+			traj->final_acc[i] = 0.0f;
+		}
+
+		float32_t deltaX = traj->final_pos[0] - traj->initial_pos[0];
+		traj->xpos_coefficient[0] = traj->initial_pos[0];
+		traj->xpos_coefficient[1] = traj->initial_vel[0];
+		traj->xpos_coefficient[2] = 0.5f * traj->initial_acc[0];
+		traj->xpos_coefficient[3] = ( 20 * deltaX - 12 * traj->initial_vel[0] * traj->task_time -   3 * traj->initial_acc[0] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time);
+		traj->xpos_coefficient[4] = (-15 * deltaX +  8 * traj->initial_vel[0] * traj->task_time + 1.5 * traj->initial_acc[0] * traj->task_time * traj->task_time) / (1 * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+		traj->xpos_coefficient[5] = ( 12 * deltaX -  6 * traj->initial_vel[0] * traj->task_time -   1 * traj->initial_acc[0] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+
+		float32_t deltaY = traj->final_pos[1] - traj->initial_pos[1];
+		traj->ypos_coefficient[0] = traj->initial_pos[1];
+		traj->ypos_coefficient[1] = traj->initial_vel[1];
+		traj->ypos_coefficient[2] = 0.5f * traj->initial_acc[1];
+		traj->ypos_coefficient[3] = ( 20 * deltaY - 12 * traj->initial_vel[1] * traj->task_time -   3 * traj->initial_acc[1] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time);
+		traj->ypos_coefficient[4] = (-15 * deltaY +  8 * traj->initial_vel[1] * traj->task_time + 1.5 * traj->initial_acc[1] * traj->task_time * traj->task_time) / (1 * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+		traj->ypos_coefficient[5] = ( 12 * deltaY -  6 * traj->initial_vel[1] * traj->task_time -   1 * traj->initial_acc[1] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+
+		float32_t deltaZ = traj->final_pos[2] - traj->initial_pos[2];
+		traj->zpos_coefficient[0] = traj->initial_pos[2];
+		traj->zpos_coefficient[1] = traj->initial_vel[2];
+		traj->zpos_coefficient[2] = 0.5f * traj->initial_acc[2];
+		traj->zpos_coefficient[3] = ( 20 * deltaZ - 12 * traj->initial_vel[2] * traj->task_time -   3 * traj->initial_acc[2] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time);
+		traj->zpos_coefficient[4] = (-15 * deltaZ +  8 * traj->initial_vel[2] * traj->task_time + 1.5 * traj->initial_acc[2] * traj->task_time * traj->task_time) / (1 * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+		traj->zpos_coefficient[5] = ( 12 * deltaZ -  6 * traj->initial_vel[2] * traj->task_time -   1 * traj->initial_acc[2] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+	}
 }
 
-// 좌우 공백 제거
-static inline void trim_spaces(char *s) {
-  char *p = s;
-  while (*p==' ' || *p=='\t') ++p;
-  if (p!=s) memmove(s, p, strlen(p)+1);
-  for (int i=(int)strlen(s)-1; i>=0 && (s[i]==' ' || s[i]=='\t'); --i) s[i]='\0';
-}
-
-// 한 줄을 파싱: [ ... 19개 ... ] 에서 float들 추출
-static int parse_pc_line_to_floats(char *line, float vals[], int maxn)
+void get_target_point(Trajectory *traj, arm_matrix_instance_f32 pos_ref)
 {
-  char *L = strchr(line, '[');
-  char *R = strrchr(line, ']');
-  if (!L || !R || R <= L) return 0;
-
-  *R = '\0'; ++L;
-
-  int count = 0;
-  char *p = L;
-
-  while (*p && count < maxn) {
-    // 구분자(,) 전까지 토큰 범위 찾기
-    char *q = p;
-    while (*q && *q != ',') ++q;
-
-    // 토큰 문자열 [p, q)
-    // 앞뒤 공백 제거
-    while (*p == ' ' || *p == '\t') ++p;
-    char *e = q;
-    while (e > p && (e[-1] == ' ' || e[-1] == '\t')) --e;
-
-    if (e > p) { // 빈 토큰이 아니면
-      errno = 0;
-      char tmp = *e; *e = '\0';
-      char *endptr = NULL;
-      float v = strtof(p, endptr ? &endptr : &e); // newlib-nano 대응
-      if (endptr) {
-        while (*endptr == ' ' || *endptr == '\t') ++endptr;
-        if (errno != 0 || *endptr != '\0') return 0; // 유효 숫자 아님 → 실패
-      }
-      vals[count++] = v;
-      *e = tmp;
-    }
-    // 끝 처리
-    if (*q == '\0') break;
-    p = q + 1;
-  }
-
-  // 꼭 19개여야 성공
-  return (count == PC_MSG_FIELDS) ? count : 0;
-}
-
-// 파싱 결과를 시스템 파라미터에 반영 (요청대로 DataLoggingTask에서 직접 반영)
-static void apply_pc_floats(const float v[PC_MSG_FIELDS])
-{
-	// 인덱스 매핑
-	const int T   = 0;
-	const int tx  = 1,  ty  = 2,  tz  = 3;
-	const int xKp = 4,  xKi = 5,  xKd = 6,  xCf = 7,  xAw = 8;
-	const int yKp = 9,  yKi =10,  yKd =11,  yCf =12,  yAw =13;
-	const int zKp =14,  zKi =15,  zKd =16,  zCf =17,  zAw =18;
-
-	// 간단한 유효성 (원하면 강화)
-	if (v[xCf] <= 0 || v[yCf] <= 0 || v[zCf] <= 0) return;
-
-	// 1) taskTime
-	//  gTaskTime_s = v[T];
-
-	// 2) 타겟 위치 (사용자 전역/객체)
-	target_posXYZ.pData[0] = v[tx];
-	target_posXYZ.pData[1] = v[ty];
-	target_posXYZ.pData[2] = v[tz];
-
-	// 3) XYZ 게인/컷오프/안티윈드업
-	taskspace_p_gain[0]     	   = v[xKp];
-	taskspace_i_gain[0]     	   = v[xKi];
-	taskspace_d_gain[0]     	   = v[xKd];
-	taskspace_pid_cutoff[0]        = v[xCf];
-	taskspace_windup_gain[0]       = v[xAw];
-
-	taskspace_p_gain[1]     	   = v[yKp];
-	taskspace_i_gain[1]     	   = v[yKi];
-	taskspace_d_gain[1]     	   = v[yKd];
-	taskspace_pid_cutoff[1]        = v[yCf];
-	taskspace_windup_gain[1]       = v[yAw];
-
-	taskspace_p_gain[2]     	   = v[zKp];
-	taskspace_i_gain[2]    	       = v[zKi];
-	taskspace_d_gain[2]     	   = v[zKd];
-	taskspace_pid_cutoff[2]        = v[zCf];
-	taskspace_windup_gain[2]       = v[zAw];
-}
-
-// 링버퍼에서 줄 단위로 꺼내 처리 (CR 무시, LF로 완료)
-static void uart3_poll_and_process_lines(void)
-{
-  uint8_t b;
-  while (uart3_rb_pop(&b)) {
-    char c = (char)b;
-    if (c == '\r') continue;
-
-    if (c == '\n') {
-      if (uart3_line_len > 0) {
-        uart3_line[uart3_line_len] = '\0';
-
-        float vals[PC_MSG_FIELDS];
-        int n = parse_pc_line_to_floats(uart3_line, vals, PC_MSG_FIELDS);
-        if (n >= PC_MSG_FIELDS) {
-          apply_pc_floats(vals);
-        } else {
-          // 형식 불일치 시 무시(필요하면 printf로 경고)
-          // printf("UART parse fail: got %d fields\r\n", n);
-        }
-        uart3_line_len = 0;
-      }
-    } else {
-      if (uart3_line_len < UART3_LINE_MAX - 1) {
-        uart3_line[uart3_line_len++] = c;
-      } else {
-        // 라인 과길이 → 드롭 & 리셋
-        uart3_line_len = 0;
-      }
-    }
-  }
+	float32_t t = ((float32_t) ctrl_time_ms / 1000.0f) - traj->initial_time;
+	if (t < traj->task_time)
+	{
+		pos_ref.pData[0] = traj->xpos_coefficient[0] + traj->xpos_coefficient[1] *t + traj->xpos_coefficient[2] *t*t + traj->xpos_coefficient[3] *t*t*t + traj->xpos_coefficient[4] *t*t*t*t + traj->xpos_coefficient[5] *t*t*t*t*t;
+		pos_ref.pData[1] = traj->ypos_coefficient[0] + traj->ypos_coefficient[1] *t + traj->ypos_coefficient[2] *t*t + traj->ypos_coefficient[3] *t*t*t + traj->ypos_coefficient[4] *t*t*t*t + traj->ypos_coefficient[5] *t*t*t*t*t;
+		pos_ref.pData[2] = traj->zpos_coefficient[0] + traj->zpos_coefficient[1] *t + traj->zpos_coefficient[2] *t*t + traj->zpos_coefficient[3] *t*t*t + traj->zpos_coefficient[4] *t*t*t*t + traj->zpos_coefficient[5] *t*t*t*t*t;
+	}
+	else
+	{
+		for(int i=0; i<NUM_TASK_DEG; ++i)
+		{
+			pos_ref.pData[i] = traj->final_pos[i];
+		}
+	}
 }
 
 /* USER CODE END 0 */
@@ -1272,8 +1379,8 @@ int main(void)
 	strawberry_robot.axis_configuration[1] = -1;
 	strawberry_robot.axis_configuration[2] = 1;
 
-	strawberry_robot.q_lower_ROM[0] = -pi;
-	strawberry_robot.q_upper_ROM[0] = pi;
+	strawberry_robot.q_lower_ROM[0] = -pi / 2;
+	strawberry_robot.q_upper_ROM[0] = pi / 2;
 	strawberry_robot.q_lower_ROM[1] = 0;
 	strawberry_robot.q_upper_ROM[1] = 85 * (pi/180);
 	strawberry_robot.q_lower_ROM[2] = -160 * (pi/180);
@@ -1285,18 +1392,18 @@ int main(void)
 	strawberry_robot.l3 = 0.46;
 
 	// link mass setting
-	strawberry_robot.m1 = 3.93949;
-	strawberry_robot.m2 = 0;
-	strawberry_robot.m3 = 0;
+	strawberry_robot.m1 = 3.82406;
+	strawberry_robot.m2 = 0.07634;
+	strawberry_robot.m3 = 1.26067;
 
 	// link CoM position setting
-	strawberry_robot.d2 = 0;
-	strawberry_robot.d3 = 0;
+	strawberry_robot.d2 = 0.23;
+	strawberry_robot.d3 = 0.18432;
 
 	// link inertia setting
-	strawberry_robot.J1 = 0;
-	strawberry_robot.J2 = 0;
-	strawberry_robot.J3 = 0;
+	strawberry_robot.J1 = 0.02450771104;
+	strawberry_robot.J2 = 0.00811740221;
+	strawberry_robot.J3 = 0.11079467270;
 
 	// 로봇 joint state matrix 연결
 	arm_mat_init_f32(&strawberry_robot.q, NUM_MOTORS, 1, strawberry_robot.q_buffer);
@@ -1313,6 +1420,8 @@ int main(void)
 	arm_mat_init_f32(&strawberry_robot.posXYZ_old, NUM_TASK_DEG, 1, strawberry_robot.posXYZ_old_buffer);
 	arm_mat_init_f32(&strawberry_robot.velXYZ, NUM_TASK_DEG, 1, strawberry_robot.velXYZ_buffer);
 	arm_mat_init_f32(&strawberry_robot.velXYZ_old, NUM_TASK_DEG, 1, strawberry_robot.velXYZ_old_buffer);
+	arm_mat_init_f32(&strawberry_robot.accXYZ, NUM_TASK_DEG, 1, strawberry_robot.accXYZ_buffer);
+	arm_mat_init_f32(&strawberry_robot.accXYZ_old, NUM_TASK_DEG, 1, strawberry_robot.accXYZ_old_buffer);
 	// 로봇 model params matrix 연결
 	arm_mat_init_f32(&strawberry_robot.jacb_bi, NUM_TASK_DEG, NUM_MOTORS, strawberry_robot.jacb_bi_buffer);
 	arm_mat_init_f32(&strawberry_robot.jacb_bi_inv, NUM_MOTORS, NUM_TASK_DEG, strawberry_robot.jacb_bi_inv_buffer);
@@ -1758,16 +1867,20 @@ void ControlTask(void *argument)
 				}
 				// 1. 로봇의 상태 업데이트
 				robot_state_update(&strawberry_robot);
+				// 2. 로봇의 reference 업데이트
+				set_trajectory(&strawberry_robot, &quintic_traj, taskTime, desired_posXYZ);
+				get_target_point(&quintic_traj, target_posXYZ);
+				// 3. 로봇의 Control Input 계산
 				robot_pos_pid_gain_setting(&strawberry_robot, taskspace_p_gain, taskspace_d_gain, taskspace_i_gain, taskspace_windup_gain, taskspace_pid_cutoff);
-				// 2. 로봇의 Control Input 계산
-				//target_posXYZ.pData[0] = homing_posXYZ.pData[0] + 0.2f * sinf(2.0f * pi * 5.0f * ((float32_t)ctrl_time_ms) / 1000.0f);
+				// target_posXYZ.pData[1] = homing_posXYZ.pData[1] + 0.2f * sinf(2.0f * pi * 1.0f * ((float32_t)ctrl_time_ms) / 1000.0f); // reference for gain tuning
 				robot_pos_pid(&strawberry_robot, target_posXYZ);
 				for (int i = 0; i < NUM_MOTORS; ++i)
 				{
-					// 3. 로봇에서 계산한 Control Input을 모터 레벨로 내리기
+					// 4. 로봇에서 계산한 Control Input을 모터 레벨로 내리기
 					motor_feedforward_torque(&strawberry_robot.motors[i], strawberry_robot.tau_bi.pData[i] * strawberry_robot.axis_configuration[i]);
-					// 4. CAN 통신 레지스터에 여유 슬롯이 있으면 현재 모터 제어값을 전송
+					// 5. CAN 통신 레지스터에 여유 슬롯이 있으면 현재 모터 제어값을 전송
 					if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) > 0) {
+						//MIT_Mode(strawberry_robot.motors[i].id, 0.0f); // zero current for debugging
 						MIT_Mode(strawberry_robot.motors[i].id, strawberry_robot.motors[i].control_input);
 					}
 				}
@@ -1839,9 +1952,10 @@ void ControlTask(void *argument)
 				for (int i = 0; i < NUM_TASK_DEG; ++i)
 				{
 					// 12. manipulator taskspace state 초기화
-					strawberry_robot.posXYZ_ref.pData[i] = target_posXYZ.pData[i];
+					strawberry_robot.posXYZ_ref.pData[i] = homing_posXYZ.pData[i];
 					strawberry_robot.posXYZ.pData[i] = 0.0;
 					strawberry_robot.velXYZ.pData[i] = 0.0;
+					strawberry_robot.accXYZ.pData[i] = 0.0;
 
 					// 13. manipulator task space pid control state 초기화
 					strawberry_robot.pos_error.pData[i] = 0.0;
@@ -1862,7 +1976,20 @@ void ControlTask(void *argument)
 				strawberry_robot.M_bi_task_nominal.pData[8]=1.0f;
 				// 14. 로봇의 남은 과거 상태 파라미터 초기화
 				robot_state_update(&strawberry_robot);
-				// 15. 로봇의 상태를 Control Enable 상태로 초기화
+				// 15. 로봇의 Trajectory 파라미터 초기화
+				quintic_traj.initial_time = (float32_t) ctrl_time_ms / 1000.0f;
+				quintic_traj.initial_pos[0] = homing_posXYZ.pData[0];
+				quintic_traj.initial_pos[1] = homing_posXYZ.pData[1];
+				quintic_traj.initial_pos[2] = homing_posXYZ.pData[2];
+				quintic_traj.initial_vel[0] = 0.0f;
+				quintic_traj.initial_vel[1] = 0.0f;
+				quintic_traj.initial_vel[2] = 0.0f;
+				quintic_traj.initial_acc[0] = 0.0f;
+				quintic_traj.initial_acc[1] = 0.0f;
+				quintic_traj.initial_acc[2] = 0.0f;
+				set_trajectory(&strawberry_robot, &quintic_traj, taskTime, homing_posXYZ_buffer);
+				get_target_point(&quintic_traj, target_posXYZ);
+				// 16. 로봇의 상태를 Control Enable 상태로 초기화
 				strawberry_robot.current_robot_mode = 1;
 			}
 		}
