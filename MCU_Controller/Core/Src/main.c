@@ -203,11 +203,11 @@ float32_t target_posXYZ_buffer[NUM_TASK_DEG] = {
 arm_matrix_instance_f32 target_posXYZ;
 
 // robot control gains
-float32_t taskspace_p_gain[NUM_TASK_DEG]      = {180, 180, 180};
-float32_t taskspace_i_gain[NUM_TASK_DEG]      = {30, 30, 30};
-float32_t taskspace_d_gain[NUM_TASK_DEG]      = {3, 3, 3};
-float32_t taskspace_windup_gain[NUM_TASK_DEG] = {0, 0, 0};
-float32_t taskspace_pid_cutoff[NUM_TASK_DEG]  = {150, 150, 150};
+float32_t taskspace_p_gain[NUM_TASK_DEG]      = {0, 0, 0}; // 180
+float32_t taskspace_i_gain[NUM_TASK_DEG]      = {0, 0, 0};    // 30
+float32_t taskspace_d_gain[NUM_TASK_DEG]      = {0, 0, 0};       // 3
+float32_t taskspace_windup_gain[NUM_TASK_DEG] = {0, 0, 0};       // 0
+float32_t taskspace_pid_cutoff[NUM_TASK_DEG]  = {150, 150, 150}; // 150
 
 // Manipulator Structure Definition
 typedef struct {
@@ -1279,48 +1279,51 @@ void set_trajectory(Manipulator *r, Trajectory *traj, float32_t task_time, float
 	float32_t now = (float32_t)ctrl_time_ms/1000.f;
 	bool still_running = (now - traj->initial_time) < traj->task_time;
 
-	// 같은 목표/시간이고 아직 진행 중일 때만 스킵
-	if (same_pos && same_T && still_running) return;
-	else
+	if (still_running) return; // 아직 이전 task 수행중이면 무조건 스킵
+	else // 이전 task가 완료된 상황일 때,
 	{
-		traj->task_time = task_time;
-		traj->initial_time = (float32_t) ctrl_time_ms / 1000.0f;
-		traj->final_time = traj->initial_time + traj->task_time;
-
-		for (int i=0; i<NUM_TASK_DEG; ++i)
+		if ((same_pos && same_T) || still_running) return; // 같은 목표/시간이 들어온 경우이면 스킵
+		else // 다른 목표 혹은 다른 시간이 들어온 경우이면 trajectory 새로 생성
 		{
-			traj->initial_pos[i] = r->posXYZ.pData[i];
-			traj->initial_vel[i] = 0.0f;
-			traj->initial_acc[i] = 0.0f;
+			traj->task_time = task_time;
+			traj->initial_time = (float32_t) ctrl_time_ms / 1000.0f;
+			traj->final_time = traj->initial_time + traj->task_time;
 
-			traj->final_pos[i] = final_pos[i];
-			traj->final_vel[i] = 0.0f;
-			traj->final_acc[i] = 0.0f;
+			for (int i=0; i<NUM_TASK_DEG; ++i)
+			{
+				traj->initial_pos[i] = r->posXYZ.pData[i];
+				traj->initial_vel[i] = 0.0f;
+				traj->initial_acc[i] = 0.0f;
+
+				traj->final_pos[i] = final_pos[i];
+				traj->final_vel[i] = 0.0f;
+				traj->final_acc[i] = 0.0f;
+			}
+
+			float32_t deltaX = traj->final_pos[0] - traj->initial_pos[0];
+			traj->xpos_coefficient[0] = traj->initial_pos[0];
+			traj->xpos_coefficient[1] = traj->initial_vel[0];
+			traj->xpos_coefficient[2] = 0.5f * traj->initial_acc[0];
+			traj->xpos_coefficient[3] = ( 20 * deltaX - 12 * traj->initial_vel[0] * traj->task_time -   3 * traj->initial_acc[0] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time);
+			traj->xpos_coefficient[4] = (-15 * deltaX +  8 * traj->initial_vel[0] * traj->task_time + 1.5 * traj->initial_acc[0] * traj->task_time * traj->task_time) / (1 * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+			traj->xpos_coefficient[5] = ( 12 * deltaX -  6 * traj->initial_vel[0] * traj->task_time -   1 * traj->initial_acc[0] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+
+			float32_t deltaY = traj->final_pos[1] - traj->initial_pos[1];
+			traj->ypos_coefficient[0] = traj->initial_pos[1];
+			traj->ypos_coefficient[1] = traj->initial_vel[1];
+			traj->ypos_coefficient[2] = 0.5f * traj->initial_acc[1];
+			traj->ypos_coefficient[3] = ( 20 * deltaY - 12 * traj->initial_vel[1] * traj->task_time -   3 * traj->initial_acc[1] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time);
+			traj->ypos_coefficient[4] = (-15 * deltaY +  8 * traj->initial_vel[1] * traj->task_time + 1.5 * traj->initial_acc[1] * traj->task_time * traj->task_time) / (1 * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+			traj->ypos_coefficient[5] = ( 12 * deltaY -  6 * traj->initial_vel[1] * traj->task_time -   1 * traj->initial_acc[1] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+
+			float32_t deltaZ = traj->final_pos[2] - traj->initial_pos[2];
+			traj->zpos_coefficient[0] = traj->initial_pos[2];
+			traj->zpos_coefficient[1] = traj->initial_vel[2];
+			traj->zpos_coefficient[2] = 0.5f * traj->initial_acc[2];
+			traj->zpos_coefficient[3] = ( 20 * deltaZ - 12 * traj->initial_vel[2] * traj->task_time -   3 * traj->initial_acc[2] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time);
+			traj->zpos_coefficient[4] = (-15 * deltaZ +  8 * traj->initial_vel[2] * traj->task_time + 1.5 * traj->initial_acc[2] * traj->task_time * traj->task_time) / (1 * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
+			traj->zpos_coefficient[5] = ( 12 * deltaZ -  6 * traj->initial_vel[2] * traj->task_time -   1 * traj->initial_acc[2] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
 		}
-
-		float32_t deltaX = traj->final_pos[0] - traj->initial_pos[0];
-		traj->xpos_coefficient[0] = traj->initial_pos[0];
-		traj->xpos_coefficient[1] = traj->initial_vel[0];
-		traj->xpos_coefficient[2] = 0.5f * traj->initial_acc[0];
-		traj->xpos_coefficient[3] = ( 20 * deltaX - 12 * traj->initial_vel[0] * traj->task_time -   3 * traj->initial_acc[0] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time);
-		traj->xpos_coefficient[4] = (-15 * deltaX +  8 * traj->initial_vel[0] * traj->task_time + 1.5 * traj->initial_acc[0] * traj->task_time * traj->task_time) / (1 * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
-		traj->xpos_coefficient[5] = ( 12 * deltaX -  6 * traj->initial_vel[0] * traj->task_time -   1 * traj->initial_acc[0] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
-
-		float32_t deltaY = traj->final_pos[1] - traj->initial_pos[1];
-		traj->ypos_coefficient[0] = traj->initial_pos[1];
-		traj->ypos_coefficient[1] = traj->initial_vel[1];
-		traj->ypos_coefficient[2] = 0.5f * traj->initial_acc[1];
-		traj->ypos_coefficient[3] = ( 20 * deltaY - 12 * traj->initial_vel[1] * traj->task_time -   3 * traj->initial_acc[1] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time);
-		traj->ypos_coefficient[4] = (-15 * deltaY +  8 * traj->initial_vel[1] * traj->task_time + 1.5 * traj->initial_acc[1] * traj->task_time * traj->task_time) / (1 * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
-		traj->ypos_coefficient[5] = ( 12 * deltaY -  6 * traj->initial_vel[1] * traj->task_time -   1 * traj->initial_acc[1] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
-
-		float32_t deltaZ = traj->final_pos[2] - traj->initial_pos[2];
-		traj->zpos_coefficient[0] = traj->initial_pos[2];
-		traj->zpos_coefficient[1] = traj->initial_vel[2];
-		traj->zpos_coefficient[2] = 0.5f * traj->initial_acc[2];
-		traj->zpos_coefficient[3] = ( 20 * deltaZ - 12 * traj->initial_vel[2] * traj->task_time -   3 * traj->initial_acc[2] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time);
-		traj->zpos_coefficient[4] = (-15 * deltaZ +  8 * traj->initial_vel[2] * traj->task_time + 1.5 * traj->initial_acc[2] * traj->task_time * traj->task_time) / (1 * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
-		traj->zpos_coefficient[5] = ( 12 * deltaZ -  6 * traj->initial_vel[2] * traj->task_time -   1 * traj->initial_acc[2] * traj->task_time * traj->task_time) / (2 * traj->task_time * traj->task_time * traj->task_time * traj->task_time * traj->task_time);
 	}
 }
 
@@ -1393,8 +1396,8 @@ int main(void)
 
 	// link mass setting
 	strawberry_robot.m1 = 3.82406;
-	strawberry_robot.m2 = 0.07634;
-	strawberry_robot.m3 = 1.26067;
+	strawberry_robot.m2 = 0.17634;
+	strawberry_robot.m3 = 1.46067;
 
 	// link CoM position setting
 	strawberry_robot.d2 = 0.23;
@@ -1876,6 +1879,7 @@ void ControlTask(void *argument)
 				robot_pos_pid(&strawberry_robot, target_posXYZ);
 				for (int i = 0; i < NUM_MOTORS; ++i)
 				{
+					strawberry_robot.tau_bi.pData[i] = strawberry_robot.tau_bi.pData[i] + strawberry_robot.G_bi.pData[i];
 					// 4. 로봇에서 계산한 Control Input을 모터 레벨로 내리기
 					motor_feedforward_torque(&strawberry_robot.motors[i], strawberry_robot.tau_bi.pData[i] * strawberry_robot.axis_configuration[i]);
 					// 5. CAN 통신 레지스터에 여유 슬롯이 있으면 현재 모터 제어값을 전송
@@ -2028,9 +2032,9 @@ void DataLoggingTask(void *argument)
 			{
 				printf("[%.3f, %d, %d, %.3f, %d, %.3f, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f]\r\n",
 						(float32_t) ctrl_time_ms/1000, strawberry_robot.current_robot_mode,
-						strawberry_robot.motors[0].current_motor_mode, strawberry_robot.motors[0].control_input,
-						strawberry_robot.motors[1].current_motor_mode, strawberry_robot.motors[1].control_input,
-						strawberry_robot.motors[2].current_motor_mode, strawberry_robot.motors[2].control_input,
+						strawberry_robot.motors[0].current_motor_mode, strawberry_robot.motors[0].control_input * strawberry_robot.axis_configuration[0],
+						strawberry_robot.motors[1].current_motor_mode, strawberry_robot.motors[1].control_input * strawberry_robot.axis_configuration[1],
+						strawberry_robot.motors[2].current_motor_mode, strawberry_robot.motors[2].control_input * strawberry_robot.axis_configuration[2],
 						strawberry_robot.q_bi.pData[0], strawberry_robot.q_bi.pData[1], strawberry_robot.q_bi.pData[2],
 						strawberry_robot.posXYZ_ref.pData[0], strawberry_robot.posXYZ_ref.pData[1], strawberry_robot.posXYZ_ref.pData[2],
 						strawberry_robot.posXYZ.pData[0], strawberry_robot.posXYZ.pData[1], strawberry_robot.posXYZ.pData[2],
@@ -2040,9 +2044,9 @@ void DataLoggingTask(void *argument)
 			{
 				printf("[%.3f, %d, %d, %.3f, %d, %.3f, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f]\r\n",
 						(float32_t) ctrl_time_ms/1000, strawberry_robot.current_robot_mode,
-						strawberry_robot.motors[0].current_motor_mode, strawberry_robot.motors[0].control_input,
-						strawberry_robot.motors[1].current_motor_mode, strawberry_robot.motors[1].control_input,
-						strawberry_robot.motors[2].current_motor_mode, strawberry_robot.motors[2].control_input,
+						strawberry_robot.motors[0].current_motor_mode, strawberry_robot.motors[0].control_input * strawberry_robot.axis_configuration[0],
+						strawberry_robot.motors[1].current_motor_mode, strawberry_robot.motors[1].control_input * strawberry_robot.axis_configuration[1],
+						strawberry_robot.motors[2].current_motor_mode, strawberry_robot.motors[2].control_input * strawberry_robot.axis_configuration[2],
 						strawberry_robot.q_bi.pData[0], strawberry_robot.q_bi.pData[1], strawberry_robot.q_bi.pData[2],
 						strawberry_robot.posXYZ_ref.pData[0], strawberry_robot.posXYZ_ref.pData[1], strawberry_robot.posXYZ_ref.pData[2],
 						strawberry_robot.posXYZ.pData[0], strawberry_robot.posXYZ.pData[1], strawberry_robot.posXYZ.pData[2],

@@ -65,8 +65,8 @@ all: main-build
 main-build: MCU_Controller.elf secondary-outputs
 
 # Tool invocations
-MCU_Controller.elf MCU_Controller.map: $(OBJS) $(USER_OBJS) C:\Users\jihwan\Git-Repos\MCL-Strawberry-Harvesting-Manipulator\MCU_Controller\STM32H753ZITX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "MCU_Controller.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\Users\jihwan\Git-Repos\MCL-Strawberry-Harvesting-Manipulator\MCU_Controller\STM32H753ZITX_FLASH.ld" --specs=nosys.specs -Wl,-Map="MCU_Controller.map" -Wl,--gc-sections -static -L"C:\Users\jihwan\STM32Cube\Repository\Packs\STMicroelectronics\FP-SNS-STAIOTCFT\1.0.0\Drivers\CMSIS\DSP\Lib\GCC" -u _printf_float -u _printf_double --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+MCU_Controller.elf MCU_Controller.map: $(OBJS) $(USER_OBJS) C:\Users\MCL\git-repos\MCU_Controller\STM32H753ZITX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "MCU_Controller.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\Users\MCL\git-repos\MCU_Controller\STM32H753ZITX_FLASH.ld" --specs=nosys.specs -Wl,-Map="MCU_Controller.map" -Wl,--gc-sections -static -L"C:\Users\MCL\STM32Cube\Repository\STM32Cube_FW_H7_V1.12.1\Drivers\CMSIS\DSP\Lib\GCC" -u _printf_float -u _printf_double --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

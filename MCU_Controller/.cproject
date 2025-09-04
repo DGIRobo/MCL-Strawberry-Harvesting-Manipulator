@@ -84,7 +84,7 @@
 									<listOptionValue builtIn="false" value="arm_cortexM7lfsp_math"/>
 								</option>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.option.directories.1027689245" name="Library search path (-L)" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.option.directories" valueType="libPaths">
-									<listOptionValue builtIn="false" value="&quot;C:\Users\jihwan\STM32Cube\Repository\Packs\STMicroelectronics\FP-SNS-STAIOTCFT\1.0.0\Drivers\CMSIS\DSP\Lib\GCC&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;C:\Users\MCL\STM32Cube\Repository\STM32Cube_FW_H7_V1.12.1\Drivers\CMSIS\DSP\Lib\GCC&quot;"/>
 								</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.input.1727111787" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>

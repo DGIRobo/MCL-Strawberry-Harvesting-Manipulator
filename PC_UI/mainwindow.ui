@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1366</width>
-    <height>974</height>
+    <width>1472</width>
+    <height>964</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,7 +17,7 @@
    <widget class="QCustomPlot" name="q1Plot" native="true">
     <property name="geometry">
      <rect>
-      <x>230</x>
+      <x>330</x>
       <y>110</y>
       <width>361</width>
       <height>181</height>
@@ -27,7 +27,7 @@
    <widget class="QLabel" name="label_2">
     <property name="geometry">
      <rect>
-      <x>310</x>
+      <x>410</x>
       <y>86</y>
       <width>201</width>
       <height>20</height>
@@ -43,7 +43,7 @@
    <widget class="QLabel" name="label_3">
     <property name="geometry">
      <rect>
-      <x>680</x>
+      <x>780</x>
       <y>89</y>
       <width>221</width>
       <height>21</height>
@@ -59,7 +59,7 @@
    <widget class="QCustomPlot" name="qmPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>610</x>
+      <x>710</x>
       <y>110</y>
       <width>361</width>
       <height>181</height>
@@ -69,7 +69,7 @@
    <widget class="QCustomPlot" name="qbPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>990</x>
+      <x>1090</x>
       <y>110</y>
       <width>361</width>
       <height>181</height>
@@ -79,7 +79,7 @@
    <widget class="QLabel" name="label_4">
     <property name="geometry">
      <rect>
-      <x>1070</x>
+      <x>1170</x>
       <y>86</y>
       <width>201</width>
       <height>20</height>
@@ -95,7 +95,7 @@
    <widget class="QCustomPlot" name="xposPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>230</x>
+      <x>330</x>
       <y>320</y>
       <width>361</width>
       <height>181</height>
@@ -105,7 +105,7 @@
    <widget class="QLabel" name="label_5">
     <property name="geometry">
      <rect>
-      <x>310</x>
+      <x>410</x>
       <y>296</y>
       <width>201</width>
       <height>20</height>
@@ -121,7 +121,7 @@
    <widget class="QLabel" name="label_6">
     <property name="geometry">
      <rect>
-      <x>690</x>
+      <x>790</x>
       <y>296</y>
       <width>201</width>
       <height>20</height>
@@ -137,7 +137,7 @@
    <widget class="QCustomPlot" name="yposPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>610</x>
+      <x>710</x>
       <y>320</y>
       <width>361</width>
       <height>181</height>
@@ -147,7 +147,7 @@
    <widget class="QCustomPlot" name="zposPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>990</x>
+      <x>1090</x>
       <y>320</y>
       <width>361</width>
       <height>181</height>
@@ -157,7 +157,7 @@
    <widget class="QLabel" name="label_7">
     <property name="geometry">
      <rect>
-      <x>1060</x>
+      <x>1160</x>
       <y>299</y>
       <width>221</width>
       <height>21</height>
@@ -173,7 +173,7 @@
    <widget class="QLabel" name="label_8">
     <property name="geometry">
      <rect>
-      <x>1070</x>
+      <x>1170</x>
       <y>506</y>
       <width>201</width>
       <height>20</height>
@@ -189,7 +189,7 @@
    <widget class="QCustomPlot" name="yposIctrlPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>610</x>
+      <x>710</x>
       <y>530</y>
       <width>361</width>
       <height>181</height>
@@ -199,7 +199,7 @@
    <widget class="QCustomPlot" name="zposIctrlPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>990</x>
+      <x>1090</x>
       <y>530</y>
       <width>361</width>
       <height>181</height>
@@ -209,7 +209,7 @@
    <widget class="QLabel" name="label_9">
     <property name="geometry">
      <rect>
-      <x>690</x>
+      <x>790</x>
       <y>506</y>
       <width>201</width>
       <height>20</height>
@@ -225,7 +225,7 @@
    <widget class="QLabel" name="label_10">
     <property name="geometry">
      <rect>
-      <x>310</x>
+      <x>410</x>
       <y>506</y>
       <width>201</width>
       <height>20</height>
@@ -241,7 +241,7 @@
    <widget class="QCustomPlot" name="xposIctrlPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>230</x>
+      <x>330</x>
       <y>530</y>
       <width>361</width>
       <height>181</height>
@@ -251,7 +251,7 @@
    <widget class="QLabel" name="label_11">
     <property name="geometry">
      <rect>
-      <x>1040</x>
+      <x>1140</x>
       <y>716</y>
       <width>261</width>
       <height>20</height>
@@ -267,7 +267,7 @@
    <widget class="QCustomPlot" name="qmCurrentPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>610</x>
+      <x>710</x>
       <y>740</y>
       <width>361</width>
       <height>181</height>
@@ -277,7 +277,7 @@
    <widget class="QCustomPlot" name="qbCurrentPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>990</x>
+      <x>1090</x>
       <y>740</y>
       <width>361</width>
       <height>181</height>
@@ -287,7 +287,7 @@
    <widget class="QLabel" name="label_12">
     <property name="geometry">
      <rect>
-      <x>660</x>
+      <x>760</x>
       <y>716</y>
       <width>261</width>
       <height>20</height>
@@ -303,7 +303,7 @@
    <widget class="QLabel" name="label_13">
     <property name="geometry">
      <rect>
-      <x>290</x>
+      <x>390</x>
       <y>716</y>
       <width>241</width>
       <height>20</height>
@@ -319,7 +319,7 @@
    <widget class="QCustomPlot" name="q1CurrentPlot" native="true">
     <property name="geometry">
      <rect>
-      <x>230</x>
+      <x>330</x>
       <y>740</y>
       <width>361</width>
       <height>181</height>
@@ -734,7 +734,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>180.000000000000000</double>
+     <double>0.000000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_24">
@@ -785,7 +785,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>30.000000000000000</double>
+     <double>0.000000000000000</double>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="xposDctrlGain">
@@ -804,7 +804,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>3.000000000000000</double>
+     <double>0.000000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_26">
@@ -938,7 +938,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>30.000000000000000</double>
+     <double>0.000000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_31">
@@ -989,7 +989,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>3.000000000000000</double>
+     <double>0.000000000000000</double>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="yposPctrlGain">
@@ -1008,7 +1008,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>180.000000000000000</double>
+     <double>0.000000000000000</double>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="yposWindupGain">
@@ -1126,7 +1126,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>30.000000000000000</double>
+     <double>0.000000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_37">
@@ -1209,7 +1209,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>180.000000000000000</double>
+     <double>0.000000000000000</double>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="zposCutoffFreq">
@@ -1263,13 +1263,13 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>3.000000000000000</double>
+     <double>0.000000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_41">
     <property name="geometry">
      <rect>
-      <x>820</x>
+      <x>920</x>
       <y>10</y>
       <width>531</width>
       <height>41</height>
@@ -1323,6 +1323,19 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>1.000000000000000</double>
     </property>
    </widget>
+   <widget class="QPushButton" name="pushButton">
+    <property name="geometry">
+     <rect>
+      <x>230</x>
+      <y>210</y>
+      <width>71</width>
+      <height>711</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Serial Send</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <widget class="QMenuBar" name="menubar">
@@ -1330,8 +1343,8 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1366</width>
-     <height>22</height>
+     <width>1472</width>
+     <height>18</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuStrawberry_Harvesting_Robot">

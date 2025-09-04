@@ -1,6 +1,6 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
-
+#include <iostream>
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -295,3 +295,12 @@ void MainWindow::readUIParams()
         ui->zposWindupGain->value()
     };
 }
+
+
+
+
+void MainWindow::on_pushButton_clicked()
+{
+    gTelemetry.serialTx_flag = true;
+}
+

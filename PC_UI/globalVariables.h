@@ -13,6 +13,7 @@ struct MotorState {
 
 struct Telemetry {
     // Transmitting Data
+    bool serialTx_flag = false;
     std::array<double,4> target_position{};
     std::array<double,5> posx_pid_gain{};
     std::array<double,5> posy_pid_gain{};
