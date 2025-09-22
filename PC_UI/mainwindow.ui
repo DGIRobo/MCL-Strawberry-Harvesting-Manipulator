@@ -734,7 +734,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>0.000000000000000</double>
+     <double>500.000000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_24">
@@ -804,7 +804,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>0.000000000000000</double>
+     <double>3.000000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_26">
@@ -989,7 +989,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>0.000000000000000</double>
+     <double>1.000000000000000</double>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="yposPctrlGain">
@@ -1008,7 +1008,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>0.000000000000000</double>
+     <double>230.000000000000000</double>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="yposWindupGain">
@@ -1209,7 +1209,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>0.000000000000000</double>
+     <double>520.000000000000000</double>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="zposCutoffFreq">
@@ -1263,7 +1263,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <double>0.010000000000000</double>
     </property>
     <property name="value">
-     <double>0.000000000000000</double>
+     <double>3.000000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_41">

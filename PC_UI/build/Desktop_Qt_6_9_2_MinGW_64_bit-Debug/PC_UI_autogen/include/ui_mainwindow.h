@@ -343,7 +343,7 @@ public:
         xposPctrlGain->setGeometry(QRect(120, 400, 81, 22));
         xposPctrlGain->setMaximum(1000.000000000000000);
         xposPctrlGain->setSingleStep(0.010000000000000);
-        xposPctrlGain->setValue(0.000000000000000);
+        xposPctrlGain->setValue(500.000000000000000);
         label_24 = new QLabel(centralwidget);
         label_24->setObjectName("label_24");
         label_24->setGeometry(QRect(39, 400, 71, 21));
@@ -363,7 +363,7 @@ public:
         xposDctrlGain->setGeometry(QRect(120, 460, 81, 22));
         xposDctrlGain->setMaximum(1000.000000000000000);
         xposDctrlGain->setSingleStep(0.010000000000000);
-        xposDctrlGain->setValue(0.000000000000000);
+        xposDctrlGain->setValue(3.000000000000000);
         label_26 = new QLabel(centralwidget);
         label_26->setObjectName("label_26");
         label_26->setGeometry(QRect(39, 460, 71, 21));
@@ -414,13 +414,13 @@ public:
         yposDctrlGain->setGeometry(QRect(120, 650, 81, 22));
         yposDctrlGain->setMaximum(1000.000000000000000);
         yposDctrlGain->setSingleStep(0.010000000000000);
-        yposDctrlGain->setValue(0.000000000000000);
+        yposDctrlGain->setValue(1.000000000000000);
         yposPctrlGain = new QDoubleSpinBox(centralwidget);
         yposPctrlGain->setObjectName("yposPctrlGain");
         yposPctrlGain->setGeometry(QRect(120, 590, 81, 22));
         yposPctrlGain->setMaximum(1000.000000000000000);
         yposPctrlGain->setSingleStep(0.010000000000000);
-        yposPctrlGain->setValue(0.000000000000000);
+        yposPctrlGain->setValue(230.000000000000000);
         yposWindupGain = new QDoubleSpinBox(centralwidget);
         yposWindupGain->setObjectName("yposWindupGain");
         yposWindupGain->setGeometry(QRect(120, 710, 81, 22));
@@ -476,7 +476,7 @@ public:
         zposPctrlGain->setGeometry(QRect(120, 780, 81, 22));
         zposPctrlGain->setMaximum(1000.000000000000000);
         zposPctrlGain->setSingleStep(0.010000000000000);
-        zposPctrlGain->setValue(0.000000000000000);
+        zposPctrlGain->setValue(520.000000000000000);
         zposCutoffFreq = new QDoubleSpinBox(centralwidget);
         zposCutoffFreq->setObjectName("zposCutoffFreq");
         zposCutoffFreq->setGeometry(QRect(120, 870, 81, 22));
@@ -492,7 +492,7 @@ public:
         zposDctrlGain->setGeometry(QRect(120, 840, 81, 22));
         zposDctrlGain->setMaximum(1000.000000000000000);
         zposDctrlGain->setSingleStep(0.010000000000000);
-        zposDctrlGain->setValue(0.000000000000000);
+        zposDctrlGain->setValue(3.000000000000000);
         label_41 = new QLabel(centralwidget);
         label_41->setObjectName("label_41");
         label_41->setGeometry(QRect(920, 10, 531, 41));

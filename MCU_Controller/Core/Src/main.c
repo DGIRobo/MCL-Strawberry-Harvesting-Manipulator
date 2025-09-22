@@ -104,6 +104,7 @@ static volatile uint16_t uart3_tx_last_len = 0;
 static volatile uint8_t  uart3_tx_busy = 0;
 
 // Setting for Control
+#define NUM_IMUS 3 // IMU 3개
 #define NUM_MOTORS 3 // motor 3개
 #define NUM_TASK_DEG 3 // task space 자유도 3
 
@@ -125,6 +126,21 @@ float32_t target_vel[NUM_MOTORS] = {
 	0,
 	0
 };
+
+// IMU Structure Definition
+typedef struct {
+	int id;
+	QueueHandle_t canRxQueue_accel;  // IMU CAN communication data
+	QueueHandle_t canRxQueue_gyro;  // IMU CAN communication data
+
+	float32_t accelX;
+	float32_t accelY;
+	float32_t accelZ;
+
+	float32_t gyroX;
+	float32_t gyroY;
+	float32_t gyroZ;
+} IMU;
 
 // Motor Structure Definition
 typedef struct {
@@ -214,6 +230,9 @@ typedef struct {
 	// manipulator safety state definition
 	int current_robot_mode;		// robot enable: 1, disable: 0
 	int desired_robot_mode;
+
+	// IMU structure definition
+	IMU IMUs[NUM_IMUS];
 
 	// Motor structure definition
 	Motor motors[NUM_MOTORS];
@@ -851,7 +870,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
             Error_Handler();
         }
 
-        uint8_t id = RxData[0];  // RxData[0]에 모터 ID가 있음
+        uint8_t id = RxHeader.Identifier;
 
         // 해당 ID와 일치하는 motor 찾기
         for (int i = 0; i < NUM_MOTORS; ++i)
@@ -864,6 +883,33 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
                 portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
                 break;
             }
+        }
+        // 해당 ID와 일치하는 IMU 찾기
+        if (RxData[0] == 0xF0) // IMU의 동기화 데이터는 0xF0로 시작함.
+        {
+        	for (int i = 0; i < NUM_IMUS; ++i)
+			{
+				if (strawberry_robot.IMUs[i].id == id)
+				{
+					BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+					if (RxData[1] == 0x33) // 받은 데이터가 가속도 값인 경우 (가속도 코드: 0x33)
+					{
+						// 해당 IMU의 수신 큐에 RxData[8] 통째로 넣기
+						xQueueSendFromISR(strawberry_robot.IMUs[i].canRxQueue_accel, RxData, &xHigherPriorityTaskWoken);
+					}
+					else if (RxData[1] == 0x34) // 받은 데이터가 각속도 값인 경우 (각속도 코드: 0x34)
+					{
+						// 해당 IMU의 수신 큐에 RxData[8] 통째로 넣기
+						xQueueSendFromISR(strawberry_robot.IMUs[i].canRxQueue_gyro, RxData, &xHigherPriorityTaskWoken);
+					}
+					else
+					{
+						// 다른 메시지가 전송된 경우 무시
+					}
+					portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+					break;
+				}
+			}
         }
 
         HAL_GPIO_TogglePin(GPIOE, LED2_PIN);  // 수신 표시
@@ -898,6 +944,45 @@ float32_t lowpassfilter(float32_t input, float32_t input_old, float32_t output_o
     output = (Ts * (input + input_old) - (Ts - 2 * time_const) * output_old) / (Ts + 2 * time_const);
 
     return output;
+}
+
+// IMU Sensing Functions ----------------------------------------------------
+void link_IMU_read(IMU *imu)
+{
+    uint8_t buf[8], last_acc[8], last_gyr[8];
+    int got_acc = 0, got_gyr = 0;
+    // 1) 가속도 큐 비우고 마지막 패킷 유지
+    while (xQueueReceive(imu->canRxQueue_accel, buf, 0) == pdPASS) {
+        memcpy(last_acc, buf, 8);
+        got_acc = 1;
+    }
+    if (got_acc) {
+        // 동기화 패킷/인덱스 한번 더 확인: 0xF0 / 0x33
+        if (last_acc[0] == 0xF0 && last_acc[1] == 0x33) {
+            imu->accelX = (float)((int16_t)((uint16_t)last_acc[2] | ((uint16_t)last_acc[3] << 8))) * 0.001f;
+            imu->accelY = (float)((int16_t)((uint16_t)last_acc[4] | ((uint16_t)last_acc[5] << 8))) * 0.001f;
+            imu->accelZ = (float)((int16_t)((uint16_t)last_acc[6] | ((uint16_t)last_acc[7] << 8))) * 0.001f;
+        }
+        else {
+            // 필요시: 예외 처리/로그
+        }
+    }
+    // 2) 자이로 큐 비우고 마지막 패킷 유지
+    while (xQueueReceive(imu->canRxQueue_gyro, buf, 0) == pdPASS) {
+        memcpy(last_gyr, buf, 8);
+        got_gyr = 1;
+    }
+    if (got_gyr) {
+        // 동기화 패킷/인덱스 한번 더 확인: 0xF0 / 0x34
+        if (last_gyr[0] == 0xF0 && last_gyr[1] == 0x34) {
+            imu->gyroX = (float)((int16_t)((uint16_t)last_gyr[2] | ((uint16_t)last_gyr[3] << 8))) * 0.1f;
+            imu->gyroY = (float)((int16_t)((uint16_t)last_gyr[4] | ((uint16_t)last_gyr[5] << 8))) * 0.1f;
+            imu->gyroZ = (float)((int16_t)((uint16_t)last_gyr[6] | ((uint16_t)last_gyr[7] << 8))) * 0.1f;
+        }
+        else {
+            // 필요시: 예외 처리/로그
+        }
+    }
 }
 
 // Single Motor Controller Functions ----------------------------------------------------
@@ -1370,6 +1455,12 @@ int main(void)
 		strawberry_robot.motors[i].upper_CL = 7.2;
 		strawberry_robot.motors[i].lower_CL = -7.2;
 	}
+	// 가속도, 각속도계 파라미터 초기화
+	for (int i = 0; i < NUM_IMUS; ++i) {
+		strawberry_robot.IMUs[i].id = i + 4;    // ID 4, 5, 6, ...
+		strawberry_robot.IMUs[i].canRxQueue_accel = xQueueCreate(8, sizeof(uint8_t[8]));  // 8바이트 버퍼
+		strawberry_robot.IMUs[i].canRxQueue_gyro = xQueueCreate(8, sizeof(uint8_t[8]));  // 8바이트 버퍼
+	}
 	// 로봇 객체 불변 파라미터 초기화
 	arm_mat_init_f32(&homing_q_bi, NUM_MOTORS, 1, homing_q_bi_buffer);
 	arm_mat_init_f32(&homing_posXYZ, NUM_TASK_DEG, 1, homing_posXYZ_buffer);
@@ -1385,7 +1476,7 @@ int main(void)
 	strawberry_robot.q_lower_ROM[0] = -pi / 2;
 	strawberry_robot.q_upper_ROM[0] = pi / 2;
 	strawberry_robot.q_lower_ROM[1] = 0;
-	strawberry_robot.q_upper_ROM[1] = 85 * (pi/180);
+	strawberry_robot.q_upper_ROM[1] = 120 * (pi/180);
 	strawberry_robot.q_lower_ROM[2] = -160 * (pi/180);
 	strawberry_robot.q_upper_ROM[2] = -40 * (pi/180);
 
@@ -1863,7 +1954,11 @@ void ControlTask(void *argument)
 			}
 			else // Robot의 Disable 명령이 들어오지 않으면
 			{
-				// 0. 각 모터의 엔코더 값 센싱 및 모터 상태 업데이트
+				// 0. 각 IMU 값 센싱, 각 모터의 엔코더 값 센싱 및 모터 상태 업데이트
+				for (int i = 0; i < NUM_IMUS; ++i)
+				{
+					link_IMU_read(&strawberry_robot.IMUs[i]);
+				}
 				for (int i = 0; i < NUM_MOTORS; ++i)
 				{
 					motor_encoder_read(&strawberry_robot.motors[i], 70.0);
@@ -1884,8 +1979,8 @@ void ControlTask(void *argument)
 					motor_feedforward_torque(&strawberry_robot.motors[i], strawberry_robot.tau_bi.pData[i] * strawberry_robot.axis_configuration[i]);
 					// 5. CAN 통신 레지스터에 여유 슬롯이 있으면 현재 모터 제어값을 전송
 					if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) > 0) {
-						//MIT_Mode(strawberry_robot.motors[i].id, 0.0f); // zero current for debugging
-						MIT_Mode(strawberry_robot.motors[i].id, strawberry_robot.motors[i].control_input);
+						MIT_Mode(strawberry_robot.motors[i].id, 0.0f); // zero current for debugging
+						//MIT_Mode(strawberry_robot.motors[i].id, strawberry_robot.motors[i].control_input);
 					}
 				}
 			}
@@ -1894,6 +1989,25 @@ void ControlTask(void *argument)
 		{
 			if (strawberry_robot.desired_robot_mode == 1) // Robot의 Enable 명령이 들어오면
 			{
+				for (int i = 0; i < NUM_IMUS; ++i)
+				{
+					// 1. CAN Rx 버퍼가 남아 있으면 모두 버림
+					uint8_t dump[8];
+					while (xQueueReceive(strawberry_robot.IMUs[i].canRxQueue_accel, dump, 0) == pdPASS) {
+						/* drop */
+					}
+					while (xQueueReceive(strawberry_robot.IMUs[i].canRxQueue_gyro, dump, 0) == pdPASS) {
+						/* drop */
+					}
+					// 2. 가속도 초기화
+					strawberry_robot.IMUs[i].accelX = 0;
+					strawberry_robot.IMUs[i].accelY = 0;
+					strawberry_robot.IMUs[i].accelZ = 0;
+					// 3. 각속도 초기화
+					strawberry_robot.IMUs[i].gyroX = 0;
+					strawberry_robot.IMUs[i].gyroY = 0;
+					strawberry_robot.IMUs[i].gyroZ = 0;
+				}
 				for (int i = 0; i < NUM_MOTORS; ++i)
 				{
 					// 0. 로봇의 상태 전환 LED로 표시
