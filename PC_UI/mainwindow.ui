@@ -690,7 +690,7 @@ QLabel#qm_activation_led[on=&quot;false&quot;] { /* OFF */
      <number>3</number>
     </property>
     <property name="minimum">
-     <double>-0.900000000000000</double>
+     <double>0.000000000000000</double>
     </property>
     <property name="maximum">
      <double>0.900000000000000</double>

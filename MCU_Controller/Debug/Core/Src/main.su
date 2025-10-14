@@ -45,7 +45,7 @@
 ../Core/Src/main.c:1826:13:MX_DMA_Init	16	static
 ../Core/Src/main.c:1850:13:MX_GPIO_Init	56	static
 ../Core/Src/main.c:1907:6:ControlTask	88	static
-../Core/Src/main.c:2125:6:DataLoggingTask	240	static
-../Core/Src/main.c:2175:6:MPU_Config	24	static
-../Core/Src/main.c:2210:6:HAL_TIM_PeriodElapsedCallback	16	static
-../Core/Src/main.c:2228:6:Error_Handler	16	static
+../Core/Src/main.c:2126:6:DataLoggingTask	240	static
+../Core/Src/main.c:2176:6:MPU_Config	24	static
+../Core/Src/main.c:2211:6:HAL_TIM_PeriodElapsedCallback	16	static
+../Core/Src/main.c:2229:6:Error_Handler	16	static

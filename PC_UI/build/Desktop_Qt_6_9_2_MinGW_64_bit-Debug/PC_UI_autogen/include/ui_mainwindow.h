@@ -330,7 +330,7 @@ public:
         targetZpos->setObjectName("targetZpos");
         targetZpos->setGeometry(QRect(120, 330, 81, 22));
         targetZpos->setDecimals(3);
-        targetZpos->setMinimum(-0.900000000000000);
+        targetZpos->setMinimum(0.000000000000000);
         targetZpos->setMaximum(0.900000000000000);
         targetZpos->setSingleStep(0.001000000000000);
         targetZpos->setValue(0.176000000000000);

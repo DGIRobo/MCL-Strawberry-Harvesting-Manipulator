@@ -78,3 +78,11 @@
 184	7371	7786839508979796	CMakeFiles/PC_UI.dir/mainwindow.cpp.obj	29ba33f150579ed6
 181	12664	7786839508939934	CMakeFiles/PC_UI.dir/PC_UI_autogen/mocs_compilation.cpp.obj	e86d274d12e2d8ed
 12664	31347	7786839633771120	PC_UI.exe	8d3af9dc9ba8715a
+17	216	7809897743174065	PC_UI_autogen/timestamp	29692f7df1fd0972
+17	216	7809897743174065	PC_UI_autogen/mocs_compilation.cpp	29692f7df1fd0972
+17	216	7809897743174065	C:/Users/MCL/git-repos/PC_UI/build/Desktop_Qt_6_9_2_MinGW_64_bit-Debug/PC_UI_autogen/timestamp	29692f7df1fd0972
+17	216	7809897743174065	C:/Users/MCL/git-repos/PC_UI/build/Desktop_Qt_6_9_2_MinGW_64_bit-Debug/PC_UI_autogen/mocs_compilation.cpp	29692f7df1fd0972
+220	12485	7809897745200145	CMakeFiles/PC_UI.dir/main.cpp.obj	aea3581310a514c
+222	12903	7809897745219612	CMakeFiles/PC_UI.dir/mainwindow.cpp.obj	29ba33f150579ed6
+218	18510	7809897745180664	CMakeFiles/PC_UI.dir/PC_UI_autogen/mocs_compilation.cpp.obj	e86d274d12e2d8ed
+18511	38549	7809897928108059	PC_UI.exe	8d3af9dc9ba8715a

@@ -83,7 +83,7 @@ void SerialReceiver::parseFrame(const QByteArray& payload)
     // 공백 제거
     for (QString& t : tok) t = t.trimmed();
 
-    // 프레임 형식 유효성: 정확히 30개 (2 + 2*3 + 4*3)
+    // 프레임 형식 유효성: 정확히 30개 (2 + 3*3 + 4*3)
     static constexpr int EXPECTED_TOKENS = 20;
     if (tok.size() != EXPECTED_TOKENS) return;
 
@@ -182,7 +182,7 @@ QByteArray SerialReceiver::buildTxFrame(const std::array<double,4>& target,
     // posx/y/z_pid_gain (각 5)
     for (double v : posx) f << d(v);
     for (double v : posy) f << d(v);
-    for (double v : posz) f << d(v);
+    for (double v : posz) f << d(v); 
 
     // 결과: 총 4 + 5 + 5 + 5 = 19 토큰
     const QString body = f.join(", ");

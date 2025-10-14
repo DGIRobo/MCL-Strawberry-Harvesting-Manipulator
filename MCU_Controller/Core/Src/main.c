@@ -1974,13 +1974,14 @@ void ControlTask(void *argument)
 				robot_pos_pid(&strawberry_robot, target_posXYZ);
 				for (int i = 0; i < NUM_MOTORS; ++i)
 				{
+					//strawberry_robot.tau_bi.pData[i] = strawberry_robot.G_bi.pData[i];
 					strawberry_robot.tau_bi.pData[i] = strawberry_robot.tau_bi.pData[i] + strawberry_robot.G_bi.pData[i];
 					// 4. 로봇에서 계산한 Control Input을 모터 레벨로 내리기
 					motor_feedforward_torque(&strawberry_robot.motors[i], strawberry_robot.tau_bi.pData[i] * strawberry_robot.axis_configuration[i]);
 					// 5. CAN 통신 레지스터에 여유 슬롯이 있으면 현재 모터 제어값을 전송
 					if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) > 0) {
-						MIT_Mode(strawberry_robot.motors[i].id, 0.0f); // zero current for debugging
-						//MIT_Mode(strawberry_robot.motors[i].id, strawberry_robot.motors[i].control_input);
+						//MIT_Mode(strawberry_robot.motors[i].id, 0.0f); // zero current for debugging
+						MIT_Mode(strawberry_robot.motors[i].id, strawberry_robot.motors[i].control_input);
 					}
 				}
 			}
